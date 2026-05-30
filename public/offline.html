@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sin conexión — Finanzas</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100svh;
+      margin: 0;
+      background: #f8fafc;
+      color: #1e293b;
+      text-align: center;
+      padding: 1.5rem;
+    }
+    .icon { font-size: 3rem; margin-bottom: 1rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.5rem; }
+    p { color: #64748b; margin: 0 0 1.5rem; font-size: 0.95rem; }
+    button {
+      background: #6366f1;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="icon">📡</div>
+  <h1>Sin conexión</h1>
+  <p>Revisa tu internet e intenta de nuevo.<br />Los datos quedan guardados en la nube.</p>
+  <button onclick="window.location.reload()">Reintentar</button>
+</body>
+</html>
