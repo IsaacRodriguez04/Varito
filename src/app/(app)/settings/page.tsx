@@ -3,6 +3,7 @@ import { Tag, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SignOutButton } from '@/components/layout/SignOutButton'
+import { NotificationSettings } from '@/components/layout/NotificationSettings'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -51,6 +52,9 @@ export default async function SettingsPage() {
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
         </section>
+
+        {/* ── Notifications ── */}
+        <NotificationSettings />
 
         {/* ── Sign out ── */}
         <section className="rounded-xl border bg-card p-4">
