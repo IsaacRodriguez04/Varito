@@ -13,10 +13,10 @@ import {
 } from '@/components/ui/select'
 import { createMovement, updateMovement } from './actions'
 import { todayISO } from '@/lib/date-utils'
-import type { Account, Category, Movement, MovementType, MSIOption } from '@/types/app.types'
+import type { Account, Category, Movement, MovementType } from '@/types/app.types'
 import { cn } from '@/lib/utils'
 
-const MSI_OPTIONS: MSIOption[] = [1, 3, 6, 9, 12, 18, 24]
+const MSI_OPTIONS = [1, 3, 6, 9, 12, 18, 24]
 
 const TYPES: { value: MovementType; label: string; icon: string }[] = [
   { value: 'expense',  label: 'Gasto',          icon: '💸' },
@@ -46,7 +46,12 @@ export function MovementSheet({
   const [categoryId, setCategoryId] = useState(movement?.category_id ?? '')
   const [accountId, setAccountId] = useState(movement?.account_id ?? '')
   const [destAccountId, setDestAccountId] = useState(movement?.destination_account_id ?? '')
-  const [installments, setInstallments] = useState<MSIOption>(movement?.installments ?? 1)
+  const [installments, setInstallments] = useState<number>(movement?.installments ?? 1)
+  const [customInstallments, setCustomInstallments] = useState(
+    movement?.installments && !MSI_OPTIONS.includes(movement.installments)
+      ? String(movement.installments)
+      : ''
+  )
   const [notes, setNotes] = useState(movement?.notes ?? '')
 
   const selectedAccount = accounts.find((a) => a.id === accountId)
@@ -57,7 +62,7 @@ export function MovementSheet({
 
   function handleTypeChange(t: MovementType) {
     setType(t)
-    if (t !== 'expense') setInstallments(1)
+    if (t !== 'expense') { setInstallments(1); setCustomInstallments('') }
     if (t === 'income' || t === 'saving') setAccountId('')
   }
 
@@ -65,13 +70,13 @@ export function MovementSheet({
     const safeId = id ?? ''
     setAccountId(safeId)
     const acc = accounts.find((a) => a.id === safeId)
-    if (acc?.type !== 'credit') setInstallments(1)
+    if (acc?.type !== 'credit') { setInstallments(1); setCustomInstallments('') }
   }
 
   function resetForm() {
     setType('expense'); setDate(todayISO()); setDescription(''); setAmount('')
     setCategoryId(''); setAccountId(''); setDestAccountId('')
-    setInstallments(1); setNotes('')
+    setInstallments(1); setCustomInstallments(''); setNotes('')
   }
 
   function handleOpenChange(v: boolean) {
@@ -98,7 +103,7 @@ export function MovementSheet({
       account_id: needsAccount ? accountId || null : null,
       destination_account_id: needsDest ? destAccountId || null : null,
       amount: parseFloat(amount),
-      installments: needsMSI ? installments : 1 as MSIOption,
+      installments: needsMSI ? installments : 1,
       notes: notes.trim() || null,
     }
   }
@@ -243,10 +248,10 @@ export function MovementSheet({
                   <button
                     key={m}
                     type="button"
-                    onClick={() => setInstallments(m)}
+                    onClick={() => { setInstallments(m); setCustomInstallments('') }}
                     className={cn(
                       'rounded-full border px-3 py-1 text-sm font-medium transition-colors',
-                      installments === m
+                      installments === m && !customInstallments
                         ? 'border-primary bg-primary text-primary-foreground'
                         : 'text-muted-foreground hover:bg-muted'
                     )}
@@ -254,6 +259,28 @@ export function MovementSheet({
                     {m === 1 ? 'Contado' : `${m} MSI`}
                   </button>
                 ))}
+                <div className={cn(
+                  'flex items-center gap-1 rounded-full border px-3 py-1 transition-colors',
+                  customInstallments
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'text-muted-foreground'
+                )}>
+                  <input
+                    type="number"
+                    min="2"
+                    max="60"
+                    value={customInstallments}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      setCustomInstallments(raw)
+                      const num = parseInt(raw, 10)
+                      if (!isNaN(num) && num >= 1) setInstallments(num)
+                    }}
+                    placeholder="Otro"
+                    className="w-12 bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground"
+                  />
+                  {customInstallments && <span className="text-sm font-medium">MSI</span>}
+                </div>
               </div>
             </div>
           )}

@@ -1,6 +1,6 @@
 export type AccountType = 'credit' | 'debit' | 'cash'
 export type MovementType = 'expense' | 'income' | 'saving' | 'transfer'
-export type MSIOption = 1 | 3 | 6 | 9 | 12 | 18 | 24
+export type MSIOption = number
 
 export interface Profile {
   id: string
