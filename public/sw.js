@@ -1,4 +1,4 @@
-const CACHE = 'varito-v1'
+const CACHE = 'varito-v2'
 const OFFLINE_URL = '/offline.html'
 
 const PRECACHE = [
