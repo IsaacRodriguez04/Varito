@@ -260,26 +260,26 @@ export function MovementSheet({
                   </button>
                 ))}
                 <div className={cn(
-                  'flex items-center gap-1 rounded-full border px-3 py-1 transition-colors',
+                  'flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-medium transition-colors',
                   customInstallments
                     ? 'border-primary bg-primary/10 text-primary'
-                    : 'text-muted-foreground'
+                    : 'border-border text-muted-foreground'
                 )}>
                   <input
-                    type="number"
-                    min="2"
-                    max="60"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={customInstallments}
                     onChange={(e) => {
-                      const raw = e.target.value
+                      const raw = e.target.value.replace(/\D/g, '')
                       setCustomInstallments(raw)
                       const num = parseInt(raw, 10)
                       if (!isNaN(num) && num >= 1) setInstallments(num)
                     }}
                     placeholder="Otro"
-                    className="w-12 bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground"
+                    className="w-10 bg-transparent outline-none placeholder:text-muted-foreground"
                   />
-                  {customInstallments && <span className="text-sm font-medium">MSI</span>}
+                  <span className="shrink-0">MSI</span>
                 </div>
               </div>
             </div>
