@@ -241,7 +241,7 @@ export function MovementSheet({
 
           {/* MSI chips (credit expenses only) */}
           {needsMSI && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label>Plazo</Label>
               <div className="flex flex-wrap gap-2">
                 {MSI_OPTIONS.map((m) => (
@@ -259,28 +259,23 @@ export function MovementSheet({
                     {m === 1 ? 'Contado' : `${m} MSI`}
                   </button>
                 ))}
-                <div className={cn(
-                  'flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-medium transition-colors',
-                  customInstallments
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border text-muted-foreground'
-                )}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={customInstallments}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/\D/g, '')
-                      setCustomInstallments(raw)
-                      const num = parseInt(raw, 10)
-                      if (!isNaN(num) && num >= 1) setInstallments(num)
-                    }}
-                    placeholder="Otro"
-                    className="w-10 bg-transparent outline-none placeholder:text-muted-foreground"
-                  />
-                  <span className="shrink-0">MSI</span>
-                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="Otro plazo…"
+                  value={customInstallments}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    setCustomInstallments(raw)
+                    const num = parseInt(raw, 10)
+                    if (!isNaN(num) && num >= 1) setInstallments(num)
+                    if (raw === '') setInstallments(1)
+                  }}
+                  className="w-36"
+                />
+                {customInstallments && <span className="text-sm text-muted-foreground">meses sin intereses</span>}
               </div>
             </div>
           )}
