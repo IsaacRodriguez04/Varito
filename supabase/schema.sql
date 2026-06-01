@@ -78,7 +78,7 @@ CREATE TABLE movements (
   destination_account_id UUID REFERENCES accounts(id),
   amount                 NUMERIC(12,2) NOT NULL CHECK (amount > 0),
   installments           SMALLINT NOT NULL DEFAULT 1
-                           CHECK (installments IN (1,3,6,9,12,18,24)),
+                           CHECK (installments >= 1),
   notes                  TEXT,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
