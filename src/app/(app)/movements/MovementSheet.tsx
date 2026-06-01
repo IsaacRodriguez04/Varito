@@ -264,14 +264,20 @@ export function MovementSheet({
                 <Input
                   type="number"
                   inputMode="numeric"
+                  min="1"
                   placeholder="Otro plazo…"
                   value={customInstallments}
                   onChange={(e) => {
                     const raw = e.target.value
-                    setCustomInstallments(raw)
+                    if (raw === '') {
+                      setCustomInstallments('')
+                      setInstallments(1)
+                      return
+                    }
                     const num = parseInt(raw, 10)
-                    if (!isNaN(num) && num >= 1) setInstallments(num)
-                    if (raw === '') setInstallments(1)
+                    if (isNaN(num) || num < 1) return
+                    setCustomInstallments(raw)
+                    setInstallments(num)
                   }}
                   className="w-36"
                 />
