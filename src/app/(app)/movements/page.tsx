@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { MovementsClient } from './MovementsClient'
 import { currentYearMonth, monthStart, monthEnd, prevMonth } from '@/lib/date-utils'
-import type { Account, Category, Movement } from '@/types/app.types'
+import type { Account, Category, Goal, Movement } from '@/types/app.types'
 
 export default async function MovementsPage({
   searchParams,
@@ -15,7 +15,7 @@ export default async function MovementsPage({
 
   const supabase = await createClient()
 
-  const [{ data: movements }, { data: accounts }, { data: categories }, { data: recurringPrev }] =
+  const [{ data: movements }, { data: accounts }, { data: categories }, { data: recurringPrev }, { data: goals }] =
     await Promise.all([
       supabase
         .from('movements')
@@ -51,6 +51,12 @@ export default async function MovementsPage({
         .gte('date', monthStart(pm))
         .lte('date', monthEnd(pm))
         .eq('is_recurring', true),
+
+      supabase
+        .from('goals')
+        .select('*')
+        .eq('is_completed', false)
+        .order('name'),
     ])
 
   const currentDescriptions = new Set(
@@ -67,6 +73,7 @@ export default async function MovementsPage({
         movements={(movements ?? []) as Movement[]}
         accounts={(accounts ?? []) as Account[]}
         categories={(categories ?? []) as Category[]}
+        goals={(goals ?? []) as Goal[]}
         selectedMonth={selectedMonth}
         suggestions={suggestions}
       />

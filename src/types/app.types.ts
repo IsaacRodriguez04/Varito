@@ -46,10 +46,12 @@ export interface Movement {
   installments: MSIOption
   is_recurring: boolean
   notes: string | null
+  goal_id: string | null
   created_at: string
   category?: Category
   account?: Account
   destination_account?: Account
+  goal?: Goal
 }
 
 export interface Budget {

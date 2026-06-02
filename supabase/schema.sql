@@ -81,6 +81,7 @@ CREATE TABLE movements (
                            CHECK (installments >= 1),
   is_recurring           BOOLEAN NOT NULL DEFAULT false,
   notes                  TEXT,
+  goal_id                UUID REFERENCES goals(id) ON DELETE SET NULL,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -91,6 +92,7 @@ CREATE POLICY "users manage own movements"
 CREATE INDEX idx_movements_user_id    ON movements(user_id);
 CREATE INDEX idx_movements_date       ON movements(user_id, date DESC);
 CREATE INDEX idx_movements_account_id ON movements(account_id);
+CREATE INDEX idx_movements_goal_id    ON movements(goal_id);
 
 -- ============================================================
 -- INSTALLMENTS (cuotas MSI)
@@ -117,6 +119,30 @@ CREATE INDEX idx_installments_due_date   ON installments(user_id, due_date);
 CREATE INDEX idx_installments_movement   ON installments(movement_id);
 CREATE INDEX idx_installments_unpaid     ON installments(user_id, is_paid, due_date)
   WHERE is_paid = false;
+
+-- ============================================================
+-- GOALS (metas de ahorro)
+-- ============================================================
+
+CREATE TABLE goals (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  icon          TEXT NOT NULL DEFAULT '🎯',
+  color         TEXT NOT NULL DEFAULT '#6366f1',
+  target_amount NUMERIC(12,2) NOT NULL CHECK (target_amount > 0),
+  saved_amount  NUMERIC(12,2) NOT NULL DEFAULT 0,
+  target_date   DATE,
+  notes         TEXT,
+  is_completed  BOOLEAN NOT NULL DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own goals"
+  ON goals FOR ALL USING (auth.uid() = user_id);
+
+CREATE INDEX idx_goals_user_id ON goals(user_id);
 
 -- ============================================================
 -- PUSH SUBSCRIPTIONS

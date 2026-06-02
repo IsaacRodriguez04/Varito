@@ -16,6 +16,7 @@ interface MovementPayload {
   installments: MSIOption
   is_recurring: boolean
   notes: string | null
+  goal_id: string | null
 }
 
 async function getUser() {
@@ -23,6 +24,26 @@ async function getUser() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('No autenticado')
   return { supabase, user }
+}
+
+async function adjustGoalAmount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  goalId: string,
+  delta: number
+) {
+  const { data: goal } = await supabase
+    .from('goals')
+    .select('saved_amount')
+    .eq('id', goalId)
+    .eq('user_id', userId)
+    .single()
+  if (!goal) return
+  await supabase
+    .from('goals')
+    .update({ saved_amount: Math.max(0, goal.saved_amount + delta) })
+    .eq('id', goalId)
+    .eq('user_id', userId)
 }
 
 async function generateInstallments(
@@ -80,11 +101,22 @@ export async function createMovement(data: MovementPayload) {
     )
   }
 
+  if (data.type === 'saving' && data.goal_id) {
+    await adjustGoalAmount(supabase, user.id, data.goal_id, data.amount)
+  }
+
   revalidatePaths()
 }
 
 export async function updateMovement(id: string, data: MovementPayload) {
   const { supabase, user } = await getUser()
+
+  const { data: old } = await supabase
+    .from('movements')
+    .select('type, amount, goal_id')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single()
 
   const { error } = await supabase
     .from('movements')
@@ -93,6 +125,14 @@ export async function updateMovement(id: string, data: MovementPayload) {
     .eq('user_id', user.id)
 
   if (error) throw new Error(error.message)
+
+  // Adjust goal saved_amounts for before/after
+  if (old?.type === 'saving' && old.goal_id) {
+    await adjustGoalAmount(supabase, user.id, old.goal_id, -old.amount)
+  }
+  if (data.type === 'saving' && data.goal_id) {
+    await adjustGoalAmount(supabase, user.id, data.goal_id, data.amount)
+  }
 
   // Remove unpaid installments and recalculate
   await supabase
@@ -121,17 +161,21 @@ export async function deleteMovement(id: string) {
     .eq('is_paid', true)
 
   if (paidCount && paidCount > 0) {
-    // Keep paid installments — only delete unpaid ones, then soft-mark movement
     await supabase
       .from('installments')
       .delete()
       .eq('movement_id', id)
       .eq('is_paid', false)
-    // Movement record stays for historical reference (paid installments still point to it)
-    // For now just revalidate — a future "cancelled" flag can be added later
     revalidatePaths()
     return
   }
+
+  const { data: mvData } = await supabase
+    .from('movements')
+    .select('type, amount, goal_id')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single()
 
   const { error } = await supabase
     .from('movements')
@@ -140,6 +184,11 @@ export async function deleteMovement(id: string) {
     .eq('user_id', user.id)
 
   if (error) throw new Error(error.message)
+
+  if (mvData?.type === 'saving' && mvData.goal_id) {
+    await adjustGoalAmount(supabase, user.id, mvData.goal_id, -mvData.amount)
+  }
+
   revalidatePaths()
 }
 
@@ -158,4 +207,5 @@ function revalidatePaths() {
   revalidatePath('/movements')
   revalidatePath('/calendar')
   revalidatePath('/dashboard')
+  revalidatePath('/goals')
 }

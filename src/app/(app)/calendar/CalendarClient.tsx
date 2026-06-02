@@ -1,14 +1,22 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import { toast } from 'sonner'
 import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import { MonthSelector } from '@/components/MonthSelector'
-import { toggleInstallmentPaid } from './actions'
+import { toggleInstallmentPaid, payInstallments } from './actions'
 import { formatMXN, formatMXNCompact } from '@/lib/currency'
 import { formatFullDate } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
+import type { Account } from '@/types/app.types'
 import type { InstallmentDetail } from './page'
 
 const DAY_HEADERS = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa']
@@ -16,7 +24,7 @@ const DAY_HEADERS = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa']
 const GRID_7 = { display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' } as const
 
 function buildCalendarDays(year: number, month: number): (number | null)[] {
-  const firstDay = new Date(year, month - 1, 1).getDay() // 0 = Sunday
+  const firstDay = new Date(year, month - 1, 1).getDay()
   const daysInMonth = new Date(year, month, 0).getDate()
   const cells: (number | null)[] = Array(firstDay).fill(null)
   for (let d = 1; d <= daysInMonth; d++) cells.push(d)
@@ -28,20 +36,28 @@ function toDateStr(year: number, month: number, day: number) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+interface PayState {
+  ids: string[]
+  totalAmount: number
+  creditAccountId: string
+  cardName: string
+}
+
 interface CalendarClientProps {
   installments: InstallmentDetail[]
   selectedMonth: string
+  debitAccounts: Pick<Account, 'id' | 'name' | 'bank' | 'color' | 'type'>[]
 }
 
-export function CalendarClient({ installments, selectedMonth }: CalendarClientProps) {
+export function CalendarClient({ installments, selectedMonth, debitAccounts }: CalendarClientProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [paySheet, setPaySheet] = useState<PayState | null>(null)
 
   const [year, month] = selectedMonth.split('-').map(Number)
   const today = new Date().toISOString().split('T')[0]
   const calendarDays = buildCalendarDays(year, month)
 
-  // Group by date
   const byDate = new Map<string, InstallmentDetail[]>()
   for (const inst of installments) {
     const list = byDate.get(inst.due_date) ?? []
@@ -53,11 +69,81 @@ export function CalendarClient({ installments, selectedMonth }: CalendarClientPr
   const totalPaid    = installments.filter((i) =>  i.is_paid).reduce((s, i) => s + i.amount, 0)
   const displayed    = selectedDate ? (byDate.get(selectedDate) ?? []) : installments
 
-  function handleToggle(id: string, currentPaid: boolean) {
+  // Group displayed list by date for "pay group" buttons
+  const groupedDisplayed = useMemo(() => {
+    const map = new Map<string, InstallmentDetail[]>()
+    for (const inst of displayed) {
+      const list = map.get(inst.due_date) ?? []
+      list.push(inst)
+      map.set(inst.due_date, list)
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
+  }, [displayed])
+
+  function openPaySheet(insts: InstallmentDetail[]) {
+    setPaySheet({
+      ids: insts.map((i) => i.id),
+      totalAmount: insts.reduce((s, i) => s + i.amount, 0),
+      creditAccountId: insts[0].movement.account.id,
+      cardName: insts[0].movement.account.name,
+    })
+  }
+
+  function handleToggle(inst: InstallmentDetail) {
+    if (inst.is_paid) {
+      // Unmark: direct, no dialog
+      startTransition(async () => {
+        try {
+          await toggleInstallmentPaid(inst.id, false)
+          toast.success('Marcado como pendiente')
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Error')
+        }
+      })
+    } else if (debitAccounts.length > 0) {
+      openPaySheet([inst])
+    } else {
+      startTransition(async () => {
+        try {
+          await toggleInstallmentPaid(inst.id, true)
+          toast.success('Marcado como pagado')
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Error')
+        }
+      })
+    }
+  }
+
+  function handleGroupPay(insts: InstallmentDetail[]) {
+    const unpaid = insts.filter((i) => !i.is_paid)
+    if (unpaid.length === 0) return
+    if (debitAccounts.length > 0) {
+      openPaySheet(unpaid)
+    } else {
+      startTransition(async () => {
+        try {
+          await payInstallments(unpaid.map((i) => i.id), null, unpaid[0].movement.account.id, unpaid.reduce((s, i) => s + i.amount, 0), unpaid[0].movement.account.name)
+          toast.success('Cuotas marcadas como pagadas')
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Error')
+        }
+      })
+    }
+  }
+
+  function handleConfirmPay(sourceAccountId: string | null) {
+    if (!paySheet) return
     startTransition(async () => {
       try {
-        await toggleInstallmentPaid(id, !currentPaid)
-        toast.success(currentPaid ? 'Marcado como pendiente' : 'Marcado como pagado')
+        await payInstallments(
+          paySheet.ids,
+          sourceAccountId,
+          paySheet.creditAccountId,
+          paySheet.totalAmount,
+          paySheet.cardName
+        )
+        toast.success(sourceAccountId ? 'Pago registrado' : 'Cuotas marcadas como pagadas')
+        setPaySheet(null)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Error')
       }
@@ -66,12 +152,10 @@ export function CalendarClient({ installments, selectedMonth }: CalendarClientPr
 
   return (
     <>
-      {/* Month nav — allowFuture because MSI payments are in upcoming months */}
       <div className="px-4 pb-3">
         <MonthSelector value={selectedMonth} allowFuture />
       </div>
 
-      {/* Summary */}
       {installments.length > 0 && (
         <div className="mx-4 mb-3 grid grid-cols-2 gap-2">
           <div className="rounded-xl border bg-red-50 p-3">
@@ -87,7 +171,6 @@ export function CalendarClient({ installments, selectedMonth }: CalendarClientPr
 
       {/* Calendar */}
       <div className="mx-4 mb-4 rounded-xl border overflow-hidden">
-        {/* Weekday headers */}
         <div style={GRID_7} className="border-b bg-muted/40">
           {DAY_HEADERS.map((d) => (
             <div key={d} className="py-2 text-center text-xs font-semibold text-muted-foreground">
@@ -96,7 +179,6 @@ export function CalendarClient({ installments, selectedMonth }: CalendarClientPr
           ))}
         </div>
 
-        {/* Day cells */}
         <div style={GRID_7}>
           {calendarDays.map((day, idx) => {
             if (!day) {
@@ -167,8 +249,8 @@ export function CalendarClient({ installments, selectedMonth }: CalendarClientPr
         </div>
       </div>
 
-      {/* Installment list */}
-      <div className="px-4 pb-6 space-y-2">
+      {/* Installment list grouped by date */}
+      <div className="px-4 pb-6 space-y-4">
         {installments.length === 0 ? (
           <div className="py-16 text-center text-muted-foreground">
             <div className="text-4xl mb-3">🗓️</div>
@@ -178,27 +260,128 @@ export function CalendarClient({ installments, selectedMonth }: CalendarClientPr
             </p>
           </div>
         ) : (
-          <>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              {selectedDate
-                ? formatFullDate(selectedDate)
-                : `Todos los pagos · ${installments.length} cuota${installments.length !== 1 ? 's' : ''}`}
-            </h3>
-            {displayed.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">Sin pagos este día</p>
-            )}
-            {displayed.map((inst) => (
-              <InstallmentRow
-                key={inst.id}
-                installment={inst}
-                onToggle={() => handleToggle(inst.id, inst.is_paid)}
-                isPending={isPending}
-              />
-            ))}
-          </>
+          groupedDisplayed.map(([date, insts]) => {
+            const unpaid = insts.filter((i) => !i.is_paid)
+            const allSameCard = unpaid.length > 1 &&
+              new Set(unpaid.map((i) => i.movement.account.id)).size === 1
+
+            return (
+              <div key={date}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {formatFullDate(date)}
+                  </h3>
+                  {allSameCard && (
+                    <button
+                      className="text-xs text-primary font-medium disabled:opacity-50"
+                      disabled={isPending}
+                      onClick={() => handleGroupPay(insts)}
+                    >
+                      Pagar todo · {formatMXN(unpaid.reduce((s, i) => s + i.amount, 0))}
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {insts.map((inst) => (
+                    <InstallmentRow
+                      key={inst.id}
+                      installment={inst}
+                      onToggle={() => handleToggle(inst)}
+                      isPending={isPending}
+                    />
+                  ))}
+                </div>
+              </div>
+            )
+          })
         )}
       </div>
+
+      {/* Pay dialog */}
+      {paySheet && (
+        <PayDialog
+          state={paySheet}
+          debitAccounts={debitAccounts}
+          isPending={isPending}
+          onClose={() => setPaySheet(null)}
+          onConfirm={handleConfirmPay}
+        />
+      )}
     </>
+  )
+}
+
+function PayDialog({
+  state,
+  debitAccounts,
+  isPending,
+  onClose,
+  onConfirm,
+}: {
+  state: PayState
+  debitAccounts: Pick<Account, 'id' | 'name' | 'bank' | 'color' | 'type'>[]
+  isPending: boolean
+  onClose: () => void
+  onConfirm: (sourceAccountId: string | null) => void
+}) {
+  const [selectedAccountId, setSelectedAccountId] = useState('')
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {state.ids.length > 1 ? `Pagar ${state.ids.length} cuotas` : 'Pagar cuota'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          <div className="rounded-xl border bg-muted/40 p-3 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">{state.cardName}</span>
+            <span className="font-bold tabular-nums">{formatMXN(state.totalAmount)}</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Pagar desde</Label>
+            <Select
+              value={selectedAccountId}
+              onValueChange={(v) => setSelectedAccountId(v ?? '')}
+              items={[
+                { value: '', label: 'Sin cuenta (solo marcar pagado)' },
+                ...debitAccounts.map((a) => ({
+                  value: a.id,
+                  label: `${a.name}${a.bank ? ` · ${a.bank}` : ''}`,
+                })),
+              ]}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Sin cuenta (solo marcar pagado)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Sin cuenta (solo marcar pagado)</SelectItem>
+                {debitAccounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}{a.bank ? ` · ${a.bank}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={isPending}
+            onClick={() => onConfirm(selectedAccountId || null)}
+          >
+            {isPending ? 'Guardando…' : 'Confirmar pago'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -219,13 +402,11 @@ function InstallmentRow({
         installment.is_paid && 'opacity-60'
       )}
     >
-      {/* Account color stripe */}
       <div
         className="w-1 self-stretch rounded-full flex-shrink-0"
         style={{ backgroundColor: acc.color, minHeight: '2rem' }}
       />
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="font-medium truncate text-sm">{installment.movement.description}</p>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
@@ -240,12 +421,10 @@ function InstallmentRow({
         </div>
       </div>
 
-      {/* Amount */}
       <span className="text-sm font-semibold tabular-nums flex-shrink-0">
         {formatMXN(installment.amount)}
       </span>
 
-      {/* Paid toggle */}
       <Button
         type="button"
         variant="outline"

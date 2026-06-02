@@ -68,12 +68,17 @@ profiles ───────────────────────�
     ├── categories                     │
     │     └── icon, color, is_system   │
     │                                  │
+    ├── goals
+    │     ├── target_amount / saved_amount
+    │     └── is_completed
+    │
     ├── movements ─────────────────────┤
     │     ├── type: expense/income/    │
     │     │         saving/transfer    │
     │     ├── category_id → categories │
     │     ├── account_id → accounts    │
     │     ├── destination_account_id   │  (solo en transfers)
+    │     ├── goal_id → goals          │  (solo en saving, opcional)
     │     └── installments: 1/3/6/... │
     │           │                      │
     │           │ (si es expense+credit│ y MSI > 1)
@@ -100,6 +105,8 @@ profiles ───────────────────────�
 - El campo `installments` acepta cualquier valor entero ≥ 1, no solo los plazos típicos (3, 6, 12…). El formulario ofrece botones rápidos para los valores comunes y un input libre para plazos atípicos.
 - El campo `is_recurring` en movements marca si un movimiento debe sugerirse cada mes.
 - Los `budgets` son límites de gasto por categoría por mes (`YYYY-MM`). La restricción `UNIQUE (user_id, category_id, month)` garantiza un solo presupuesto por categoría por mes; el upsert actualiza si ya existe.
+- Los movimientos de tipo `income` y `saving` requieren `account_id` (cuenta destino / cuenta origen respectivamente). El balance de cuentas débito/efectivo los contabiliza: ingresos suman, ahorros restan.
+- Un `movement` de tipo `saving` puede tener `goal_id` apuntando a una meta activa. Al crear/editar/borrar ese movimiento, `goals.saved_amount` se ajusta automáticamente. Si no se asigna meta, el ahorro se registra como "ahorro general" sin afectar ninguna meta.
 - RLS garantiza que cada query retorna únicamente filas donde `user_id = auth.uid()`.
 
 ---
@@ -182,6 +189,8 @@ Las cuentas de **débito y efectivo** muestran su saldo actual calculado en tiem
 saldo = saldo_inicial + Σ ingresos − Σ gastos − Σ ahorros ± transferencias
 ```
 
+Todos los movimientos de tipo `income`, `expense`, `saving` y `transfer` que tienen `account_id` apuntando a una cuenta débito/efectivo afectan su saldo. Al registrar un ingreso se pide "Cuenta destino"; al registrar un ahorro o gasto se pide "Cuenta".
+
 El saldo inicial se configura al crear o editar la cuenta (campo "Saldo inicial"). Las tarjetas de crédito muestran en cambio una barra de utilización: deuda pendiente vs límite de crédito, con colores verde/amarillo/rojo según el porcentaje utilizado.
 
 El dashboard también muestra una sección "Saldo por cuenta" con los saldos de débito/efectivo de un vistazo.
@@ -196,6 +205,7 @@ Módulo completo de seguimiento de metas de ahorro:
 - **Progreso visual:** barra de progreso coloreada con el color de la meta, porcentaje y monto restante.
 - **Completar / reactivar:** botón de check para marcar una meta como completada; las completadas se listan en una sección separada con opacidad reducida.
 - **Dashboard:** muestra las 3 metas activas más recientes con su progreso.
+- **Vinculación automática con movimientos:** al registrar un movimiento de tipo `saving`, el formulario muestra un selector opcional de meta activa. Si se selecciona, `goals.saved_amount` se incrementa al crear, se ajusta al editar (aplica la diferencia entre monto viejo y nuevo), y se decrementa al borrar el movimiento.
 
 La tabla `goals` fue creada en Supabase con RLS (ver sección de migraciones manuales).
 
@@ -272,7 +282,7 @@ vercel.json                    — Configuración del cron job
 
 ## Migraciones manuales en Supabase
 
-Los siguientes cambios de esquema deben ejecutarse en el **SQL Editor** de Supabase antes de desplegar los features de balance y metas:
+Los siguientes cambios de esquema deben ejecutarse en el **SQL Editor** de Supabase en el orden indicado:
 
 ```sql
 -- 1. Saldo inicial en cuentas de débito/efectivo
@@ -300,6 +310,12 @@ CREATE POLICY "goals_owner" ON goals
   FOR ALL
   USING  (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+-- 3. Vínculo entre movimientos de ahorro y metas (ejecutar DESPUÉS de crear goals)
+ALTER TABLE movements
+  ADD COLUMN IF NOT EXISTS goal_id UUID REFERENCES goals(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_movements_goal_id ON movements(goal_id);
 ```
 
 ---

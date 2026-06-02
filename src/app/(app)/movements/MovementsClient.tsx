@@ -15,7 +15,7 @@ import { deleteMovement, stopRecurring } from './actions'
 import { formatMXN } from '@/lib/currency'
 import { formatShortDate } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
-import type { Account, Category, Movement, MovementType } from '@/types/app.types'
+import type { Account, Category, Goal, Movement, MovementType } from '@/types/app.types'
 
 const TYPE_COLOR: Record<MovementType, string> = {
   expense:  'text-red-500',
@@ -69,12 +69,13 @@ interface MovementsClientProps {
   movements: Movement[]
   accounts: Account[]
   categories: Category[]
+  goals: Goal[]
   selectedMonth: string
   suggestions: Movement[]
 }
 
 export function MovementsClient({
-  movements, accounts, categories, selectedMonth, suggestions,
+  movements, accounts, categories, goals, selectedMonth, suggestions,
 }: MovementsClientProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingMovement, setEditingMovement] = useState<Movement | undefined>()
@@ -326,6 +327,7 @@ export function MovementsClient({
         onOpenChange={setSheetOpen}
         accounts={accounts}
         categories={categories}
+        goals={goals}
         movement={editingMovement}
         prefill={prefillData}
       />

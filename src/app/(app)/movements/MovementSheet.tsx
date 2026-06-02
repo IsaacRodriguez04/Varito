@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select'
 import { createMovement, updateMovement } from './actions'
 import { todayISO } from '@/lib/date-utils'
-import type { Account, Category, Movement, MovementType } from '@/types/app.types'
+import type { Account, Category, Goal, Movement, MovementType } from '@/types/app.types'
 import { cn } from '@/lib/utils'
 
 const MSI_OPTIONS = [1, 3, 6, 9, 12, 18, 24]
@@ -30,12 +30,13 @@ interface MovementSheetProps {
   onOpenChange: (open: boolean) => void
   accounts: Account[]
   categories: Category[]
+  goals: Goal[]
   movement?: Movement
   prefill?: Partial<Movement>
 }
 
 export function MovementSheet({
-  open, onOpenChange, accounts, categories, movement, prefill,
+  open, onOpenChange, accounts, categories, goals, movement, prefill,
 }: MovementSheetProps) {
   const isEdit = !!movement
   const [isPending, startTransition] = useTransition()
@@ -56,17 +57,23 @@ export function MovementSheet({
   )
   const [isRecurring, setIsRecurring] = useState(src?.is_recurring ?? false)
   const [notes, setNotes] = useState(src?.notes ?? '')
+  const [goalId, setGoalId] = useState(src?.goal_id ?? '')
 
   const selectedAccount = accounts.find((a) => a.id === accountId)
   const isCredit = selectedAccount?.type === 'credit'
-  const needsAccount = type === 'expense' || type === 'transfer'
+  const needsAccount = true
   const needsDest = type === 'transfer'
   const needsMSI = type === 'expense' && isCredit
+
+  const accountLabel =
+    type === 'transfer' ? 'Cuenta origen' :
+    type === 'income'   ? 'Cuenta destino' :
+    'Cuenta'
 
   function handleTypeChange(t: MovementType) {
     setType(t)
     if (t !== 'expense') { setInstallments(1); setCustomInstallments('') }
-    if (t === 'income' || t === 'saving') setAccountId('')
+    if (t !== 'saving') setGoalId('')
   }
 
   function handleAccountChange(id: string | null) {
@@ -79,7 +86,7 @@ export function MovementSheet({
   function resetForm() {
     setType('expense'); setDate(todayISO()); setDescription(''); setAmount('')
     setCategoryId(''); setAccountId(''); setDestAccountId('')
-    setInstallments(1); setCustomInstallments(''); setIsRecurring(false); setNotes('')
+    setInstallments(1); setCustomInstallments(''); setIsRecurring(false); setNotes(''); setGoalId('')
   }
 
   function handleOpenChange(v: boolean) {
@@ -103,12 +110,13 @@ export function MovementSheet({
       description: description.trim(),
       type,
       category_id: categoryId,
-      account_id: needsAccount ? accountId || null : null,
+      account_id: accountId || null,
       destination_account_id: needsDest ? destAccountId || null : null,
       amount: parseFloat(amount),
       installments: needsMSI ? installments : 1,
       is_recurring: type !== 'transfer' && isRecurring,
       notes: notes.trim() || null,
+      goal_id: type === 'saving' ? (goalId || null) : null,
     }
   }
 
@@ -220,10 +228,10 @@ export function MovementSheet({
             </Select>
           </div>
 
-          {/* Account (expense / transfer) */}
+          {/* Account */}
           {needsAccount && (
             <div className="space-y-1.5">
-              <Label>{type === 'transfer' ? 'Cuenta origen' : 'Cuenta'}</Label>
+              <Label>{accountLabel}</Label>
               <Select
                 value={accountId}
                 onValueChange={handleAccountChange}
@@ -316,6 +324,36 @@ export function MovementSheet({
                         {a.name}{a.bank ? ` · ${a.bank}` : ''}
                       </SelectItem>
                     ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Goal selector (saving only) */}
+          {type === 'saving' && goals.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>
+                Meta de ahorro{' '}
+                <span className="text-muted-foreground text-xs">(opcional)</span>
+              </Label>
+              <Select
+                value={goalId}
+                onValueChange={(v) => setGoalId(v ?? '')}
+                items={[
+                  { value: '', label: '— Ahorro general —' },
+                  ...goals.map((g) => ({ value: g.id, label: `${g.icon} ${g.name}` })),
+                ]}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="— Ahorro general —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— Ahorro general —</SelectItem>
+                  {goals.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.icon} {g.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

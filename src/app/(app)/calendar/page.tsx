@@ -20,19 +20,28 @@ export default async function CalendarPage({
 
   const supabase = await createClient()
 
-  const { data: installments } = await supabase
-    .from('installments')
-    .select(`
-      *,
-      movement:movements!movement_id(
-        description,
-        account:accounts!account_id(id, name, color, bank)
-      )
-    `)
-    .gte('due_date', monthStart(selectedMonth))
-    .lte('due_date', monthEnd(selectedMonth))
-    .order('due_date')
-    .order('amount', { ascending: false })
+  const [{ data: installments }, { data: debitAccounts }] = await Promise.all([
+    supabase
+      .from('installments')
+      .select(`
+        *,
+        movement:movements!movement_id(
+          description,
+          account:accounts!account_id(id, name, color, bank)
+        )
+      `)
+      .gte('due_date', monthStart(selectedMonth))
+      .lte('due_date', monthEnd(selectedMonth))
+      .order('due_date')
+      .order('amount', { ascending: false }),
+
+    supabase
+      .from('accounts')
+      .select('id, name, bank, color, type')
+      .in('type', ['debit', 'cash'])
+      .eq('is_active', true)
+      .order('created_at'),
+  ])
 
   return (
     <div>
@@ -40,6 +49,7 @@ export default async function CalendarPage({
       <CalendarClient
         installments={(installments ?? []) as InstallmentDetail[]}
         selectedMonth={selectedMonth}
+        debitAccounts={(debitAccounts ?? []) as Pick<Account, 'id' | 'name' | 'bank' | 'color' | 'type'>[]}
       />
     </div>
   )
