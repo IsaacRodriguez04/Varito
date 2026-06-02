@@ -163,13 +163,51 @@ El sistema usa el estándar Web Push con claves VAPID (Voluntary Application Ser
 
 ## Features adicionales
 
-### Presupuesto por categoría
+### Reportes y analítica (`/reports`)
 
-Cada categoría puede tener un límite de gasto mensual. Se configura desde la página de **Categorías** pulsando el icono de cartera (💼) en cada fila. El dashboard muestra una barra de progreso bajo cada categoría que tenga presupuesto:
+Resumen de los últimos 12 meses. Incluye:
+
+- **Tarjetas resumen:** ingresos, gastos, ahorros y neto totales del período.
+- **Gráfica de barras Ingresos vs Gastos:** cada mes como grupo de dos barras (verde/rojo).
+- **Gráfica de ahorro mensual:** barras del ahorro acumulado por mes.
+- **Top categorías:** ranking de categorías por gasto total con barra de progreso proporcional y porcentaje.
+
+Accesible desde el nav (ícono 📊) y desde el dashboard principal.
+
+### Balance por cuenta (`/accounts`)
+
+Las cuentas de **débito y efectivo** muestran su saldo actual calculado en tiempo real:
+
+```
+saldo = saldo_inicial + Σ ingresos − Σ gastos − Σ ahorros ± transferencias
+```
+
+El saldo inicial se configura al crear o editar la cuenta (campo "Saldo inicial"). Las tarjetas de crédito muestran en cambio una barra de utilización: deuda pendiente vs límite de crédito, con colores verde/amarillo/rojo según el porcentaje utilizado.
+
+El dashboard también muestra una sección "Saldo por cuenta" con los saldos de débito/efectivo de un vistazo.
+
+La columna `initial_balance NUMERIC DEFAULT 0` fue agregada a la tabla `accounts`.
+
+### Metas de ahorro (`/goals`)
+
+Módulo completo de seguimiento de metas de ahorro:
+
+- **Crear meta:** nombre, ícono, color, monto objetivo, monto ya ahorrado, fecha objetivo y notas.
+- **Progreso visual:** barra de progreso coloreada con el color de la meta, porcentaje y monto restante.
+- **Completar / reactivar:** botón de check para marcar una meta como completada; las completadas se listan en una sección separada con opacidad reducida.
+- **Dashboard:** muestra las 3 metas activas más recientes con su progreso.
+
+La tabla `goals` fue creada en Supabase con RLS (ver sección de migraciones manuales).
+
+### Límites de gasto por categoría
+
+Cada categoría puede tener un límite de gasto mensual. Se configura desde la página de **Categorías** pulsando el icono de cartera (💼) en cada fila. Tanto el dashboard como la página de categorías muestran una barra de progreso:
 
 - Verde: < 80 % consumido
 - Amarillo: 80–99 % consumido
-- Rojo + aviso: presupuesto superado
+- Rojo + aviso ⚠: presupuesto superado
+
+En la página de **Categorías** se muestra el gasto real del mes actual debajo del nombre de cada categoría (ej. `$1,200 de $2,000`), con la barra de progreso alineada.
 
 La tabla `budgets` guarda un registro por `(user_id, category_id, month)`. El upsert actualiza el valor si ya existía para ese mes.
 
@@ -201,12 +239,14 @@ src/
 ├── app/
 │   ├── (auth)/login/          — Página de login pública
 │   ├── (app)/                 — Rutas protegidas (requieren sesión)
-│   │   ├── dashboard/         — Resumen mensual + gráficas + barras de presupuesto
+│   │   ├── dashboard/         — Resumen mensual + gráficas + barras de presupuesto + saldos + metas
 │   │   ├── movements/         — CRUD de movimientos, sugerencias recurrentes, búsqueda/filtros
-│   │   ├── accounts/          — CRUD de cuentas
-│   │   ├── categories/        — CRUD de categorías + configuración de presupuesto mensual
+│   │   ├── accounts/          — CRUD de cuentas + balance calculado por cuenta
+│   │   ├── categories/        — CRUD de categorías + límites de gasto mensuales con progreso
 │   │   ├── budgets/           — Server actions para upsert/delete de presupuestos
 │   │   ├── calendar/          — Calendario de cuotas MSI
+│   │   ├── reports/           — Analítica de 12 meses (ingresos, gastos, ahorro, top categorías)
+│   │   ├── goals/             — Metas de ahorro con seguimiento de progreso
 │   │   └── settings/          — Perfil y cerrar sesión
 │   └── api/
 │       ├── auth/callback/     — Intercambio OAuth
@@ -226,6 +266,40 @@ public/
 supabase/
 └── schema.sql                 — Schema completo de la base de datos
 vercel.json                    — Configuración del cron job
+```
+
+---
+
+## Migraciones manuales en Supabase
+
+Los siguientes cambios de esquema deben ejecutarse en el **SQL Editor** de Supabase antes de desplegar los features de balance y metas:
+
+```sql
+-- 1. Saldo inicial en cuentas de débito/efectivo
+ALTER TABLE accounts
+  ADD COLUMN IF NOT EXISTS initial_balance NUMERIC NOT NULL DEFAULT 0;
+
+-- 2. Tabla de metas de ahorro
+CREATE TABLE IF NOT EXISTS goals (
+  id            UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id       UUID        REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name          TEXT        NOT NULL,
+  icon          TEXT        NOT NULL DEFAULT '🎯',
+  color         TEXT        NOT NULL DEFAULT '#6366f1',
+  target_amount NUMERIC     NOT NULL,
+  saved_amount  NUMERIC     NOT NULL DEFAULT 0,
+  target_date   DATE,
+  notes         TEXT,
+  is_completed  BOOLEAN     NOT NULL DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "goals_owner" ON goals
+  FOR ALL
+  USING  (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 ```
 
 ---

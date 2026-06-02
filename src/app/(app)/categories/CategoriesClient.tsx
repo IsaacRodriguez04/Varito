@@ -15,15 +15,22 @@ import { deleteCategory } from './actions'
 import { upsertBudget, deleteBudget } from '@/app/(app)/budgets/actions'
 import { formatMXN } from '@/lib/currency'
 import { formatMonthYear } from '@/lib/date-utils'
+import { cn } from '@/lib/utils'
 import type { Category, Budget } from '@/types/app.types'
 
 interface CategoriesClientProps {
   categories: Category[]
   budgets: Budget[]
   currentMonth: string
+  spendingMap: Record<string, number>
 }
 
-export function CategoriesClient({ categories, budgets, currentMonth }: CategoriesClientProps) {
+export function CategoriesClient({
+  categories,
+  budgets,
+  currentMonth,
+  spendingMap,
+}: CategoriesClientProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | undefined>()
   const [deletingCategory, setDeletingCategory] = useState<Category | undefined>()
@@ -76,7 +83,7 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
     startBudgetTransition(async () => {
       try {
         await upsertBudget(budgetingCat.cat.id, currentMonth, amount)
-        toast.success('Presupuesto guardado')
+        toast.success('Límite guardado')
         setBudgetingCat(null)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Error al guardar')
@@ -89,7 +96,7 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
     startBudgetTransition(async () => {
       try {
         await deleteBudget(budgetingCat.budget!.id)
-        toast.success('Presupuesto eliminado')
+        toast.success('Límite eliminado')
         setBudgetingCat(null)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Error al eliminar')
@@ -102,7 +109,6 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
 
   return (
     <>
-      {/* Header action */}
       <div className="px-4 pb-4 flex justify-end">
         <Button onClick={openCreate} size="sm" className="gap-2">
           <Plus className="h-4 w-4" />
@@ -110,8 +116,7 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
         </Button>
       </div>
 
-      <div className="px-4 space-y-6">
-        {/* User categories */}
+      <div className="px-4 space-y-6 pb-6">
         {userCats.length > 0 && (
           <section>
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -123,6 +128,7 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
                   key={cat.id}
                   category={cat}
                   budget={budgetMap.get(cat.id)}
+                  spending={spendingMap[cat.id] ?? 0}
                   onEdit={() => openEdit(cat)}
                   onDelete={() => setDeletingCategory(cat)}
                   onBudget={() => openBudget(cat)}
@@ -132,7 +138,6 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
           </section>
         )}
 
-        {/* System categories */}
         {systemCats.length > 0 && (
           <section>
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -144,6 +149,7 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
                   key={cat.id}
                   category={cat}
                   budget={budgetMap.get(cat.id)}
+                  spending={spendingMap[cat.id] ?? 0}
                   onEdit={() => openEdit(cat)}
                   onDelete={undefined}
                   onBudget={() => openBudget(cat)}
@@ -162,7 +168,6 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
         )}
       </div>
 
-      {/* Add/Edit category sheet */}
       <CategorySheet
         key={editingCategory?.id ?? 'new'}
         open={sheetOpen}
@@ -175,10 +180,10 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {budgetingCat?.cat.icon} {budgetingCat?.cat.name} — Presupuesto
+              {budgetingCat?.cat.icon} {budgetingCat?.cat.name} — Límite de gasto
             </DialogTitle>
             <DialogDescription>
-              Límite de gasto para {monthLabel}
+              Límite mensual para {monthLabel}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5 py-2">
@@ -235,59 +240,94 @@ export function CategoriesClient({ categories, budgets, currentMonth }: Categori
 }
 
 function CategoryRow({
-  category, budget, onEdit, onDelete, onBudget,
+  category,
+  budget,
+  spending,
+  onEdit,
+  onDelete,
+  onBudget,
 }: {
   category: Category
   budget?: Budget
+  spending: number
   onEdit: () => void
   onDelete?: () => void
   onBudget: () => void
 }) {
+  const overBudget = budget ? spending > budget.amount : false
+  const pct = budget && budget.amount > 0
+    ? Math.min(Math.round((spending / budget.amount) * 100), 100)
+    : null
+  const showProgress = !!budget && spending > 0
+
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
-      {/* Icon chip */}
-      <div
-        className="h-10 w-10 flex-shrink-0 rounded-full flex items-center justify-center text-xl"
-        style={{ backgroundColor: category.color + '22', border: `2px solid ${category.color}` }}
-      >
-        {category.icon}
-      </div>
+    <div className="rounded-xl border bg-card p-3 space-y-2">
+      <div className="flex items-center gap-3">
+        <div
+          className="h-10 w-10 flex-shrink-0 rounded-full flex items-center justify-center text-xl"
+          style={{ backgroundColor: category.color + '22', border: `2px solid ${category.color}` }}
+        >
+          {category.icon}
+        </div>
 
-      {/* Name + budget */}
-      <div className="flex-1 min-w-0">
-        <p className="font-medium">{category.name}</p>
-        {budget && (
-          <p className="text-xs text-muted-foreground">{formatMXN(budget.amount)} / mes</p>
-        )}
-      </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium">{category.name}</p>
+          {budget ? (
+            <p className={cn(
+              'text-xs',
+              overBudget ? 'text-red-500 font-semibold' : 'text-muted-foreground'
+            )}>
+              {overBudget ? '⚠ ' : ''}{formatMXN(spending)} de {formatMXN(budget.amount)}
+            </p>
+          ) : spending > 0 ? (
+            <p className="text-xs text-muted-foreground">{formatMXN(spending)} este mes</p>
+          ) : null}
+        </div>
 
-      {/* Budget button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onBudget}
-        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-        title="Establecer presupuesto"
-      >
-        <Wallet className="h-4 w-4" />
-      </Button>
-
-      {/* Edit/Delete */}
-      <Button variant="ghost" size="icon" onClick={onEdit} className="h-8 w-8">
-        <Pencil className="h-4 w-4" />
-      </Button>
-      {onDelete ? (
         <Button
           variant="ghost"
           size="icon"
-          onClick={onDelete}
-          className="h-8 w-8 text-destructive hover:text-destructive"
+          onClick={onBudget}
+          className={cn(
+            'h-8 w-8',
+            budget ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+          )}
+          title="Establecer límite de gasto"
         >
-          <Trash2 className="h-4 w-4" />
+          <Wallet className="h-4 w-4" />
         </Button>
-      ) : (
-        <div className="h-8 w-8 flex items-center justify-center text-muted-foreground/40">
-          <Lock className="h-3.5 w-3.5" />
+
+        <Button variant="ghost" size="icon" onClick={onEdit} className="h-8 w-8">
+          <Pencil className="h-4 w-4" />
+        </Button>
+        {onDelete ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            className="h-8 w-8 text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ) : (
+          <div className="h-8 w-8 flex items-center justify-center text-muted-foreground/40">
+            <Lock className="h-3.5 w-3.5" />
+          </div>
+        )}
+      </div>
+
+      {/* Spending progress bar */}
+      {showProgress && pct !== null && (
+        <div className="ml-[52px]">
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all',
+                overBudget ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-green-500'
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
         </div>
       )}
     </div>

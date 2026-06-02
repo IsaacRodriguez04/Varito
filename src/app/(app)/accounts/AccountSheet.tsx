@@ -31,17 +31,20 @@ export function AccountSheet({ open, onOpenChange, account }: AccountSheetProps)
   const [bank, setBank] = useState(account?.bank ?? '')
   const [type, setType] = useState<AccountType>(account?.type ?? 'credit')
   const [color, setColor] = useState(account?.color ?? DEFAULT_COLOR)
-  const [creditLimit, setCreditLimit] = useState(
-    account?.credit_limit?.toString() ?? ''
-  )
+  const [creditLimit, setCreditLimit] = useState(account?.credit_limit?.toString() ?? '')
   const [cutDay, setCutDay] = useState(account?.cut_day?.toString() ?? '')
   const [daysToDue, setDaysToDue] = useState(account?.days_to_due?.toString() ?? '')
+  const [initialBalance, setInitialBalance] = useState(
+    account?.initial_balance != null && account.initial_balance !== 0
+      ? account.initial_balance.toString()
+      : ''
+  )
 
   const isCredit = type === 'credit'
 
   function resetForm() {
     setName(''); setBank(''); setType('credit'); setColor(DEFAULT_COLOR)
-    setCreditLimit(''); setCutDay(''); setDaysToDue('')
+    setCreditLimit(''); setCutDay(''); setDaysToDue(''); setInitialBalance('')
   }
 
   function handleOpenChange(open: boolean) {
@@ -71,6 +74,7 @@ export function AccountSheet({ open, onOpenChange, account }: AccountSheetProps)
       credit_limit: isCredit && creditLimit ? parseFloat(creditLimit) : null,
       cut_day: isCredit && cutDay ? parseInt(cutDay) : null,
       days_to_due: isCredit && daysToDue ? parseInt(daysToDue) : null,
+      initial_balance: !isCredit && initialBalance ? parseFloat(initialBalance) : 0,
     }
 
     startTransition(async () => {
@@ -183,6 +187,21 @@ export function AccountSheet({ open, onOpenChange, account }: AccountSheetProps)
                 </div>
               </div>
             </>
+          )}
+
+          {!isCredit && (
+            <div className="space-y-2">
+              <Label>Saldo inicial (MXN)</Label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={initialBalance}
+                onChange={(e) => setInitialBalance(e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
+            </div>
           )}
 
           <div className="space-y-2">

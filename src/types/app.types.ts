@@ -20,6 +20,7 @@ export interface Account {
   credit_limit: number | null
   cut_day: number | null
   days_to_due: number | null
+  initial_balance: number
 }
 
 export interface Category {
@@ -57,6 +58,20 @@ export interface Budget {
   category_id: string
   month: string
   amount: number
+  created_at: string
+}
+
+export interface Goal {
+  id: string
+  user_id: string
+  name: string
+  icon: string
+  color: string
+  target_amount: number
+  saved_amount: number
+  target_date: string | null
+  notes: string | null
+  is_completed: boolean
   created_at: string
 }
 

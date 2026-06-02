@@ -10,12 +10,19 @@ import { currentYearMonth, monthStart, monthEnd, todayISO, formatMonthYear } fro
 import { formatMXN } from '@/lib/currency'
 import { formatShortDate } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
-import type { Category, Account, Budget } from '@/types/app.types'
+import type { Category, Account, Budget, Goal } from '@/types/app.types'
 
 type MovementRow = {
   type: string
   amount: number
   category: Category | null
+}
+
+type MovementBalanceRow = {
+  account_id: string | null
+  destination_account_id: string | null
+  type: string
+  amount: number
 }
 
 type InstallmentDebtRow = {
@@ -44,13 +51,21 @@ export default async function DashboardPage({
 
   const supabase = await createClient()
 
-  const todayStr   = todayISO()
-  const in15Days   = format(addDays(new Date(), 15), 'yyyy-MM-dd')
+  const todayStr = todayISO()
+  const in15Days = format(addDays(new Date(), 15), 'yyyy-MM-dd')
   const monthLabel = formatMonthYear(
     new Date(Number(selectedMonth.split('-')[0]), Number(selectedMonth.split('-')[1]) - 1, 1)
   )
 
-  const [{ data: movements }, { data: debtRows }, { data: upcomingRows }, { data: budgetRows }] = await Promise.all([
+  const [
+    { data: movements },
+    { data: debtRows },
+    { data: upcomingRows },
+    { data: budgetRows },
+    { data: accounts },
+    { data: allMovements },
+    { data: goals },
+  ] = await Promise.all([
     supabase
       .from('movements')
       .select('type, amount, category:categories(id, name, icon, color, is_system, user_id, created_at)')
@@ -76,11 +91,28 @@ export default async function DashboardPage({
       .from('budgets')
       .select('*')
       .eq('month', selectedMonth),
+
+    supabase
+      .from('accounts')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: true }),
+
+    supabase
+      .from('movements')
+      .select('account_id, destination_account_id, type, amount'),
+
+    supabase
+      .from('goals')
+      .select('*')
+      .eq('is_completed', false)
+      .order('created_at', { ascending: false })
+      .limit(3),
   ])
 
   const mvs = (movements ?? []) as unknown as MovementRow[]
 
-  // ── Balance ──────────────────────────────────────────────────────────────
+  // ── Balance mensual ──────────────────────────────────────────────────────
   const income   = mvs.filter((m) => m.type === 'income').reduce((s, m) => s + m.amount, 0)
   const expenses = mvs.filter((m) => m.type === 'expense').reduce((s, m) => s + m.amount, 0)
   const savings  = mvs.filter((m) => m.type === 'saving').reduce((s, m) => s + m.amount, 0)
@@ -99,9 +131,7 @@ export default async function DashboardPage({
     entry.total += m.amount
     catMap.set(m.category.id, entry)
   }
-  const catList = [...catMap.values()]
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 6)
+  const catList = [...catMap.values()].sort((a, b) => b.total - a.total).slice(0, 6)
   const othersTotal = [...catMap.values()]
     .sort((a, b) => b.total - a.total)
     .slice(6)
@@ -134,26 +164,48 @@ export default async function DashboardPage({
 
   const upcoming = (upcomingRows ?? []) as unknown as InstallmentUpcomingRow[]
 
+  // ── Account balances (debit/cash only) ───────────────────────────────────
+  const accs = (accounts ?? []) as Account[]
+  const allMvs = (allMovements ?? []) as MovementBalanceRow[]
+  const accountBalances = accs
+    .filter((a) => a.type !== 'credit')
+    .map((acc) => {
+      let balance = acc.initial_balance ?? 0
+      for (const m of allMvs) {
+        if (m.account_id === acc.id) {
+          if (m.type === 'income') balance += m.amount
+          else if (m.type === 'expense' || m.type === 'saving') balance -= m.amount
+          else if (m.type === 'transfer') balance -= m.amount
+        }
+        if (m.destination_account_id === acc.id && m.type === 'transfer') {
+          balance += m.amount
+        }
+      }
+      return { account: acc, balance }
+    })
+
+  // ── Goals ─────────────────────────────────────────────────────────────────
+  const activeGoals = (goals ?? []) as Goal[]
+
   return (
     <div>
       <PageHeader title="Inicio" subtitle={monthLabel} action={<PushSubscription />} />
 
-      {/* Month selector */}
       <div className="px-4 pb-3">
         <MonthSelector value={selectedMonth} allowFuture />
       </div>
 
       <div className="px-4 space-y-4 pb-6">
 
-        {/* ── Balance ── */}
+        {/* ── Balance mensual ── */}
         <section className="rounded-xl border bg-card p-4 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Balance del mes
           </h2>
           <div className="space-y-1">
-            <BalanceRow label="Ingresos"  value={income}   color="text-green-600" sign="+" />
-            <BalanceRow label="Gastos"    value={expenses} color="text-red-500"   sign="−" />
-            <BalanceRow label="Ahorro"    value={savings}  color="text-teal-600"  sign="−" />
+            <BalanceRow label="Ingresos" value={income}   color="text-green-600" sign="+" />
+            <BalanceRow label="Gastos"   value={expenses} color="text-red-500"   sign="−" />
+            <BalanceRow label="Ahorro"   value={savings}  color="text-teal-600"  sign="−" />
           </div>
           <div className="border-t pt-2 flex items-center justify-between">
             <span className="text-sm font-semibold">Neto</span>
@@ -163,6 +215,29 @@ export default async function DashboardPage({
           </div>
         </section>
 
+        {/* ── Saldo por cuenta (débito/efectivo) ── */}
+        {accountBalances.length > 0 && (
+          <section className="rounded-xl border bg-card p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Saldo por cuenta
+              </h2>
+              <Link href="/accounts" className="flex items-center gap-0.5 text-xs text-primary font-medium">
+                Ver todas <ChevronRight className="h-3 w-3" />
+              </Link>
+            </div>
+            {accountBalances.map(({ account: acc, balance }) => (
+              <div key={acc.id} className="flex items-center gap-2.5">
+                <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: acc.color }} />
+                <span className="flex-1 text-sm truncate">{acc.name}{acc.bank ? ` · ${acc.bank}` : ''}</span>
+                <span className={cn('text-sm font-semibold tabular-nums', balance >= 0 ? 'text-green-600' : 'text-red-500')}>
+                  {formatMXN(balance)}
+                </span>
+              </div>
+            ))}
+          </section>
+        )}
+
         {/* ── Spending by category ── */}
         {expenses > 0 && (
           <section className="rounded-xl border bg-card p-4">
@@ -170,6 +245,44 @@ export default async function DashboardPage({
               Gastos por categoría
             </h2>
             <SpendingChart data={spendingData} />
+          </section>
+        )}
+
+        {/* ── Metas de ahorro ── */}
+        {activeGoals.length > 0 && (
+          <section className="rounded-xl border bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Metas de ahorro
+              </h2>
+              <Link href="/goals" className="flex items-center gap-0.5 text-xs text-primary font-medium">
+                Ver todas <ChevronRight className="h-3 w-3" />
+              </Link>
+            </div>
+            {activeGoals.map((goal) => {
+              const pct =
+                goal.target_amount > 0
+                  ? Math.min(Math.round((goal.saved_amount / goal.target_amount) * 100), 100)
+                  : 0
+              return (
+                <div key={goal.id} className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base leading-none">{goal.icon}</span>
+                    <span className="text-sm flex-1 truncate font-medium">{goal.name}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {formatMXN(goal.saved_amount)} / {formatMXN(goal.target_amount)}
+                    </span>
+                    <span className="text-xs font-semibold w-8 text-right tabular-nums">{pct}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, backgroundColor: goal.color }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
           </section>
         )}
 
@@ -227,7 +340,7 @@ export default async function DashboardPage({
         )}
 
         {/* Empty state */}
-        {income === 0 && expenses === 0 && savings === 0 && debtList.length === 0 && upcoming.length === 0 && (
+        {income === 0 && expenses === 0 && savings === 0 && debtList.length === 0 && upcoming.length === 0 && accountBalances.length === 0 && activeGoals.length === 0 && (
           <div className="py-16 text-center text-muted-foreground">
             <div className="text-4xl mb-3">📊</div>
             <p className="font-medium">Sin datos este mes</p>

@@ -13,6 +13,7 @@ interface AccountPayload {
   credit_limit: number | null
   cut_day: number | null
   days_to_due: number | null
+  initial_balance: number
 }
 
 async function getAuthenticatedUser() {
@@ -27,6 +28,7 @@ export async function createAccount(data: AccountPayload) {
   const { error } = await supabase.from('accounts').insert({ user_id: user.id, ...data })
   if (error) throw new Error(error.message)
   revalidatePath('/accounts')
+  revalidatePath('/dashboard')
 }
 
 export async function updateAccount(id: string, data: AccountPayload) {
@@ -122,4 +124,5 @@ export async function deleteAccount(id: string) {
     .eq('user_id', user.id)
   if (error) throw new Error(error.message)
   revalidatePath('/accounts')
+  revalidatePath('/dashboard')
 }
