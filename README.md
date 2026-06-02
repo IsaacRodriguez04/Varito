@@ -98,6 +98,8 @@ profiles ───────────────────────�
 - Al borrar un movimiento con cuotas pagadas, el movimiento se deja (para mantener el historial de cuotas pagadas) y solo se eliminan los installments pendientes.
 - Al editar `cut_day` o `days_to_due` de una cuenta de crédito, todos los installments no pagados de los movimientos de esa tarjeta se recalculan automáticamente con los nuevos valores. Los ya pagados se preservan.
 - El campo `installments` acepta cualquier valor entero ≥ 1, no solo los plazos típicos (3, 6, 12…). El formulario ofrece botones rápidos para los valores comunes y un input libre para plazos atípicos.
+- El campo `is_recurring` en movements marca si un movimiento debe sugerirse cada mes.
+- Los `budgets` son límites de gasto por categoría por mes (`YYYY-MM`). La restricción `UNIQUE (user_id, category_id, month)` garantiza un solo presupuesto por categoría por mes; el upsert actualiza si ya existe.
 - RLS garantiza que cada query retorna únicamente filas donde `user_id = auth.uid()`.
 
 ---
@@ -159,6 +161,39 @@ El sistema usa el estándar Web Push con claves VAPID (Voluntary Application Ser
 
 ---
 
+## Features adicionales
+
+### Presupuesto por categoría
+
+Cada categoría puede tener un límite de gasto mensual. Se configura desde la página de **Categorías** pulsando el icono de cartera (💼) en cada fila. El dashboard muestra una barra de progreso bajo cada categoría que tenga presupuesto:
+
+- Verde: < 80 % consumido
+- Amarillo: 80–99 % consumido
+- Rojo + aviso: presupuesto superado
+
+La tabla `budgets` guarda un registro por `(user_id, category_id, month)`. El upsert actualiza el valor si ya existía para ese mes.
+
+### Movimientos recurrentes
+
+Al crear o editar un movimiento (cualquier tipo excepto transferencia) se puede activar **"Repetir este movimiento cada mes"**. Los movimientos recurrentes muestran un badge **↻** en la lista.
+
+Al abrir la pantalla de movimientos de cualquier mes, si existen movimientos recurrentes del mes anterior que aún no tienen un equivalente en el mes actual (comparación por descripción exacta, case-insensitive), aparece un banner al tope con cada sugerencia. Desde el banner el usuario puede:
+
+- **Agregar** → abre el formulario pre-relleno con los datos del movimiento anterior. El nuevo movimiento también queda marcado como recurrente por defecto, por lo que se seguirá sugiriendo el mes siguiente.
+- **Detener** → llama al servidor para poner `is_recurring = false` en el movimiento original. Desaparece del banner de forma inmediata (optimista) y ya no se sugiere en meses futuros.
+
+### Búsqueda y filtros en movimientos
+
+En la parte superior de la pantalla de movimientos hay:
+
+- **Buscador de texto** — filtra por descripción (case-insensitive) con botón de limpiar.
+- **Chips de tipo** — Todos / Gasto / Ingreso / Ahorro / Transferencia.
+- **Selects de categoría y cuenta** — filtros independientes que se pueden combinar.
+
+Todos los filtros son cliente y no generan requests extra al servidor. La barra de resumen (Ingresos / Gastos) refleja los totales del subconjunto filtrado. Cuando hay filtros activos se muestra el conteo "X de Y movimientos" y un botón **Limpiar filtros**.
+
+---
+
 ## Estructura de carpetas relevante
 
 ```
@@ -166,10 +201,11 @@ src/
 ├── app/
 │   ├── (auth)/login/          — Página de login pública
 │   ├── (app)/                 — Rutas protegidas (requieren sesión)
-│   │   ├── dashboard/         — Resumen mensual + gráficas
-│   │   ├── movements/         — CRUD de movimientos
+│   │   ├── dashboard/         — Resumen mensual + gráficas + barras de presupuesto
+│   │   ├── movements/         — CRUD de movimientos, sugerencias recurrentes, búsqueda/filtros
 │   │   ├── accounts/          — CRUD de cuentas
-│   │   ├── categories/        — CRUD de categorías
+│   │   ├── categories/        — CRUD de categorías + configuración de presupuesto mensual
+│   │   ├── budgets/           — Server actions para upsert/delete de presupuestos
 │   │   ├── calendar/          — Calendario de cuotas MSI
 │   │   └── settings/          — Perfil y cerrar sesión
 │   └── api/

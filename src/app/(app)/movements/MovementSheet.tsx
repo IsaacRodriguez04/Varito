@@ -31,28 +31,31 @@ interface MovementSheetProps {
   accounts: Account[]
   categories: Category[]
   movement?: Movement
+  prefill?: Partial<Movement>
 }
 
 export function MovementSheet({
-  open, onOpenChange, accounts, categories, movement,
+  open, onOpenChange, accounts, categories, movement, prefill,
 }: MovementSheetProps) {
   const isEdit = !!movement
   const [isPending, startTransition] = useTransition()
 
-  const [type, setType] = useState<MovementType>(movement?.type ?? 'expense')
+  const src = movement ?? prefill
+  const [type, setType] = useState<MovementType>(src?.type ?? 'expense')
   const [date, setDate] = useState(movement?.date ?? todayISO())
-  const [description, setDescription] = useState(movement?.description ?? '')
-  const [amount, setAmount] = useState(movement?.amount?.toString() ?? '')
-  const [categoryId, setCategoryId] = useState(movement?.category_id ?? '')
-  const [accountId, setAccountId] = useState(movement?.account_id ?? '')
+  const [description, setDescription] = useState(src?.description ?? '')
+  const [amount, setAmount] = useState(src?.amount?.toString() ?? '')
+  const [categoryId, setCategoryId] = useState(src?.category_id ?? '')
+  const [accountId, setAccountId] = useState(src?.account_id ?? '')
   const [destAccountId, setDestAccountId] = useState(movement?.destination_account_id ?? '')
-  const [installments, setInstallments] = useState<number>(movement?.installments ?? 1)
+  const [installments, setInstallments] = useState<number>(src?.installments ?? 1)
   const [customInstallments, setCustomInstallments] = useState(
-    movement?.installments && !MSI_OPTIONS.includes(movement.installments)
-      ? String(movement.installments)
+    src?.installments && !MSI_OPTIONS.includes(src.installments)
+      ? String(src.installments)
       : ''
   )
-  const [notes, setNotes] = useState(movement?.notes ?? '')
+  const [isRecurring, setIsRecurring] = useState(src?.is_recurring ?? false)
+  const [notes, setNotes] = useState(src?.notes ?? '')
 
   const selectedAccount = accounts.find((a) => a.id === accountId)
   const isCredit = selectedAccount?.type === 'credit'
@@ -76,7 +79,7 @@ export function MovementSheet({
   function resetForm() {
     setType('expense'); setDate(todayISO()); setDescription(''); setAmount('')
     setCategoryId(''); setAccountId(''); setDestAccountId('')
-    setInstallments(1); setCustomInstallments(''); setNotes('')
+    setInstallments(1); setCustomInstallments(''); setIsRecurring(false); setNotes('')
   }
 
   function handleOpenChange(v: boolean) {
@@ -104,6 +107,7 @@ export function MovementSheet({
       destination_account_id: needsDest ? destAccountId || null : null,
       amount: parseFloat(amount),
       installments: needsMSI ? installments : 1,
+      is_recurring: type !== 'transfer' && isRecurring,
       notes: notes.trim() || null,
     }
   }
@@ -315,6 +319,19 @@ export function MovementSheet({
                 </SelectContent>
               </Select>
             </div>
+          )}
+
+          {/* Recurring toggle */}
+          {type !== 'transfer' && (
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={(e) => setIsRecurring(e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              <span className="text-sm">Repetir este movimiento cada mes</span>
+            </label>
           )}
 
           {/* Notes */}

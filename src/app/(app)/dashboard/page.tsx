@@ -10,7 +10,7 @@ import { currentYearMonth, monthStart, monthEnd, todayISO, formatMonthYear } fro
 import { formatMXN } from '@/lib/currency'
 import { formatShortDate } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
-import type { Category, Account } from '@/types/app.types'
+import type { Category, Account, Budget } from '@/types/app.types'
 
 type MovementRow = {
   type: string
@@ -50,7 +50,7 @@ export default async function DashboardPage({
     new Date(Number(selectedMonth.split('-')[0]), Number(selectedMonth.split('-')[1]) - 1, 1)
   )
 
-  const [{ data: movements }, { data: debtRows }, { data: upcomingRows }] = await Promise.all([
+  const [{ data: movements }, { data: debtRows }, { data: upcomingRows }, { data: budgetRows }] = await Promise.all([
     supabase
       .from('movements')
       .select('type, amount, category:categories(id, name, icon, color, is_system, user_id, created_at)')
@@ -71,6 +71,11 @@ export default async function DashboardPage({
       .lte('due_date', in15Days)
       .order('due_date')
       .limit(8),
+
+    supabase
+      .from('budgets')
+      .select('*')
+      .eq('month', selectedMonth),
   ])
 
   const mvs = (movements ?? []) as unknown as MovementRow[]
@@ -82,6 +87,11 @@ export default async function DashboardPage({
   const net      = income - expenses - savings
 
   // ── Spending by category ─────────────────────────────────────────────────
+  const budgetMap = new Map<string, number>()
+  for (const b of (budgetRows ?? []) as Budget[]) {
+    budgetMap.set(b.category_id, b.amount)
+  }
+
   const catMap = new Map<string, { cat: Category; total: number }>()
   for (const m of mvs.filter((m) => m.type === 'expense')) {
     if (!m.category) continue
@@ -103,6 +113,7 @@ export default async function DashboardPage({
       color: e.cat.color,
       value: e.total,
       pct: expenses > 0 ? Math.round((e.total / expenses) * 100) : 0,
+      budget: budgetMap.get(e.cat.id),
     })),
     ...(othersTotal > 0
       ? [{ name: 'Otros', icon: '📦', color: '#94a3b8', value: othersTotal, pct: expenses > 0 ? Math.round((othersTotal / expenses) * 100) : 0 }]

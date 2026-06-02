@@ -14,6 +14,7 @@ interface MovementPayload {
   destination_account_id: string | null
   amount: number
   installments: MSIOption
+  is_recurring: boolean
   notes: string | null
 }
 
@@ -138,6 +139,17 @@ export async function deleteMovement(id: string) {
     .eq('id', id)
     .eq('user_id', user.id)
 
+  if (error) throw new Error(error.message)
+  revalidatePaths()
+}
+
+export async function stopRecurring(id: string) {
+  const { supabase, user } = await getUser()
+  const { error } = await supabase
+    .from('movements')
+    .update({ is_recurring: false })
+    .eq('id', id)
+    .eq('user_id', user.id)
   if (error) throw new Error(error.message)
   revalidatePaths()
 }

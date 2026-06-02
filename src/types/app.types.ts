@@ -43,11 +43,21 @@ export interface Movement {
   destination_account_id: string | null
   amount: number
   installments: MSIOption
+  is_recurring: boolean
   notes: string | null
   created_at: string
   category?: Category
   account?: Account
   destination_account?: Account
+}
+
+export interface Budget {
+  id: string
+  user_id: string
+  category_id: string
+  month: string
+  amount: number
+  created_at: string
 }
 
 export interface Installment {

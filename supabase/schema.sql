@@ -79,6 +79,7 @@ CREATE TABLE movements (
   amount                 NUMERIC(12,2) NOT NULL CHECK (amount > 0),
   installments           SMALLINT NOT NULL DEFAULT 1
                            CHECK (installments >= 1),
+  is_recurring           BOOLEAN NOT NULL DEFAULT false,
   notes                  TEXT,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -133,6 +134,26 @@ CREATE TABLE push_subscriptions (
 ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "users manage own push subscriptions"
   ON push_subscriptions FOR ALL USING (auth.uid() = user_id);
+
+-- ============================================================
+-- BUDGETS (presupuesto mensual por categoría)
+-- ============================================================
+
+CREATE TABLE budgets (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  month       CHAR(7) NOT NULL,
+  amount      NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, category_id, month)
+);
+
+ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own budgets"
+  ON budgets FOR ALL USING (auth.uid() = user_id);
+
+CREATE INDEX idx_budgets_user_month ON budgets(user_id, month);
 
 -- ============================================================
 -- TRIGGER: crear perfil + categorías predefinidas al registrarse

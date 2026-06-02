@@ -2,25 +2,42 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Lock } from 'lucide-react'
+import { Plus, Pencil, Trash2, Lock, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { CategorySheet } from './CategorySheet'
 import { deleteCategory } from './actions'
-import type { Category } from '@/types/app.types'
+import { upsertBudget, deleteBudget } from '@/app/(app)/budgets/actions'
+import { formatMXN } from '@/lib/currency'
+import { formatMonthYear } from '@/lib/date-utils'
+import type { Category, Budget } from '@/types/app.types'
 
 interface CategoriesClientProps {
   categories: Category[]
+  budgets: Budget[]
+  currentMonth: string
 }
 
-export function CategoriesClient({ categories }: CategoriesClientProps) {
+export function CategoriesClient({ categories, budgets, currentMonth }: CategoriesClientProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | undefined>()
   const [deletingCategory, setDeletingCategory] = useState<Category | undefined>()
   const [isPending, startTransition] = useTransition()
+
+  const [budgetingCat, setBudgetingCat] = useState<{ cat: Category; budget?: Budget } | null>(null)
+  const [budgetInput, setBudgetInput] = useState('')
+  const [isBudgetPending, startBudgetTransition] = useTransition()
+
+  const budgetMap = new Map<string, Budget>(budgets.map((b) => [b.category_id, b]))
+
+  const monthLabel = formatMonthYear(
+    new Date(Number(currentMonth.split('-')[0]), Number(currentMonth.split('-')[1]) - 1, 1)
+  )
 
   function openCreate() {
     setEditingCategory(undefined)
@@ -30,6 +47,12 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
   function openEdit(cat: Category) {
     setEditingCategory(cat)
     setSheetOpen(true)
+  }
+
+  function openBudget(cat: Category) {
+    const budget = budgetMap.get(cat.id)
+    setBudgetingCat({ cat, budget })
+    setBudgetInput(budget ? String(budget.amount) : '')
   }
 
   function handleDelete() {
@@ -42,6 +65,34 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Error al eliminar')
         setDeletingCategory(undefined)
+      }
+    })
+  }
+
+  function handleSaveBudget() {
+    if (!budgetingCat) return
+    const amount = parseFloat(budgetInput)
+    if (isNaN(amount) || amount <= 0) { toast.error('Ingresa un monto válido'); return }
+    startBudgetTransition(async () => {
+      try {
+        await upsertBudget(budgetingCat.cat.id, currentMonth, amount)
+        toast.success('Presupuesto guardado')
+        setBudgetingCat(null)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Error al guardar')
+      }
+    })
+  }
+
+  function handleClearBudget() {
+    if (!budgetingCat?.budget) return
+    startBudgetTransition(async () => {
+      try {
+        await deleteBudget(budgetingCat.budget!.id)
+        toast.success('Presupuesto eliminado')
+        setBudgetingCat(null)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Error al eliminar')
       }
     })
   }
@@ -71,8 +122,10 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
                 <CategoryRow
                   key={cat.id}
                   category={cat}
+                  budget={budgetMap.get(cat.id)}
                   onEdit={() => openEdit(cat)}
                   onDelete={() => setDeletingCategory(cat)}
+                  onBudget={() => openBudget(cat)}
                 />
               ))}
             </div>
@@ -90,8 +143,10 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
                 <CategoryRow
                   key={cat.id}
                   category={cat}
+                  budget={budgetMap.get(cat.id)}
                   onEdit={() => openEdit(cat)}
                   onDelete={undefined}
+                  onBudget={() => openBudget(cat)}
                 />
               ))}
             </div>
@@ -107,7 +162,7 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
         )}
       </div>
 
-      {/* Add/Edit sheet — key fuerza remount al cambiar categoría */}
+      {/* Add/Edit category sheet */}
       <CategorySheet
         key={editingCategory?.id ?? 'new'}
         open={sheetOpen}
@@ -115,7 +170,44 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
         category={editingCategory}
       />
 
-      {/* Delete confirmation */}
+      {/* Budget dialog */}
+      <Dialog open={!!budgetingCat} onOpenChange={(o) => !o && setBudgetingCat(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {budgetingCat?.cat.icon} {budgetingCat?.cat.name} — Presupuesto
+            </DialogTitle>
+            <DialogDescription>
+              Límite de gasto para {monthLabel}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-2">
+            <Label>Monto límite (MXN)</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={budgetInput}
+              onChange={(e) => setBudgetInput(e.target.value)}
+              min="0.01"
+              step="0.01"
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveBudget()}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            {budgetingCat?.budget && (
+              <Button variant="outline" disabled={isBudgetPending} onClick={handleClearBudget}>
+                Quitar límite
+              </Button>
+            )}
+            <Button disabled={isBudgetPending} onClick={handleSaveBudget}>
+              {isBudgetPending ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete category confirmation */}
       <Dialog
         open={!!deletingCategory}
         onOpenChange={(o) => !o && setDeletingCategory(undefined)}
@@ -143,13 +235,13 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
 }
 
 function CategoryRow({
-  category,
-  onEdit,
-  onDelete,
+  category, budget, onEdit, onDelete, onBudget,
 }: {
   category: Category
+  budget?: Budget
   onEdit: () => void
   onDelete?: () => void
+  onBudget: () => void
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
@@ -161,29 +253,43 @@ function CategoryRow({
         {category.icon}
       </div>
 
-      {/* Name */}
-      <span className="flex-1 font-medium">{category.name}</span>
-
-      {/* Actions */}
-      <div className="flex gap-1">
-        <Button variant="ghost" size="icon" onClick={onEdit} className="h-8 w-8">
-          <Pencil className="h-4 w-4" />
-        </Button>
-        {onDelete ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onDelete}
-            className="h-8 w-8 text-destructive hover:text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        ) : (
-          <div className="h-8 w-8 flex items-center justify-center text-muted-foreground/40">
-            <Lock className="h-3.5 w-3.5" />
-          </div>
+      {/* Name + budget */}
+      <div className="flex-1 min-w-0">
+        <p className="font-medium">{category.name}</p>
+        {budget && (
+          <p className="text-xs text-muted-foreground">{formatMXN(budget.amount)} / mes</p>
         )}
       </div>
+
+      {/* Budget button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onBudget}
+        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+        title="Establecer presupuesto"
+      >
+        <Wallet className="h-4 w-4" />
+      </Button>
+
+      {/* Edit/Delete */}
+      <Button variant="ghost" size="icon" onClick={onEdit} className="h-8 w-8">
+        <Pencil className="h-4 w-4" />
+      </Button>
+      {onDelete ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          className="h-8 w-8 text-destructive hover:text-destructive"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      ) : (
+        <div className="h-8 w-8 flex items-center justify-center text-muted-foreground/40">
+          <Lock className="h-3.5 w-3.5" />
+        </div>
+      )}
     </div>
   )
 }
