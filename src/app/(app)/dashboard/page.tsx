@@ -199,9 +199,14 @@ export default async function DashboardPage({
 
         {/* ── Balance mensual ── */}
         <section className="rounded-xl border bg-card p-4 space-y-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Balance del mes
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Balance del mes
+            </h2>
+            <Link href="/reports" className="flex items-center gap-0.5 text-xs text-primary font-medium">
+              Reportes <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
           <div className="space-y-1">
             <BalanceRow label="Ingresos" value={income}   color="text-green-600" sign="+" />
             <BalanceRow label="Gastos"   value={expenses} color="text-red-500"   sign="−" />
