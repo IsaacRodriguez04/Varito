@@ -92,10 +92,12 @@ profiles ───────────────────────�
 
 ### Reglas clave
 
-- Un `movement` de tipo `expense` con `account_id` de una tarjeta de crédito y `installments > 1` genera automáticamente N registros en `installments`.
+- Un `movement` de tipo `expense` con `account_id` de una tarjeta de crédito genera automáticamente registros en `installments` (incluso si `installments = 1`, es decir, contado — el registro indica cuándo se paga ese cargo).
 - Los `installments` se crean solo si la cuenta tiene `cut_day` y `days_to_due` configurados.
 - Al editar un movimiento, se eliminan los installments no pagados y se recalculan. Los pagados se conservan.
 - Al borrar un movimiento con cuotas pagadas, el movimiento se deja (para mantener el historial de cuotas pagadas) y solo se eliminan los installments pendientes.
+- Al editar `cut_day` o `days_to_due` de una cuenta de crédito, todos los installments no pagados de los movimientos de esa tarjeta se recalculan automáticamente con los nuevos valores. Los ya pagados se preservan.
+- El campo `installments` acepta cualquier valor entero ≥ 1, no solo los plazos típicos (3, 6, 12…). El formulario ofrece botones rápidos para los valores comunes y un input libre para plazos atípicos.
 - RLS garantiza que cada query retorna únicamente filas donde `user_id = auth.uid()`.
 
 ---
@@ -104,16 +106,22 @@ profiles ───────────────────────�
 
 El corazón de la app. Dado el día de compra, el día de corte de la tarjeta y los días al vencimiento:
 
-1. **Primer corte:** si el día de compra es ≤ día de corte del mismo mes, el corte aplica ese mismo mes; si no, aplica el siguiente mes.
+1. **Primer corte:** si el día de compra es **estrictamente menor** que el día de corte del mismo mes, el corte aplica ese mismo mes; en cualquier otro caso (compra igual o posterior al corte) aplica el siguiente mes. Esto replica el comportamiento real de los bancos: una compra hecha el mismo día del corte ya entra al siguiente periodo.
 2. **Primera fecha de vencimiento:** corte + días_al_vencimiento.
 3. **Cuotas siguientes:** se suma 1 mes por cuota, preservando el día (si el mes de destino tiene menos días, se ajusta al último día del mes).
 4. **Distribución del monto:** el importe total se divide entre N cuotas con redondeo a 2 decimales. Si hay centavos residuales por el redondeo, se suman a la primera cuota.
 
-Ejemplo: tarjeta con corte día 15, 20 días al vencimiento. Compra de $1,200 a 3 meses el 20 de mayo:
-- El 20 > 15 → primer corte: 15 de junio → vencimiento: 5 de julio
+Ejemplo A: tarjeta con corte día 15, 20 días al vencimiento. Compra de $1,200 a 3 meses el 20 de mayo:
+- El 20 ≥ 15 → primer corte: 15 de junio → vencimiento: 5 de julio
 - Cuota 1: $400.00 — 5 de julio
 - Cuota 2: $400.00 — 5 de agosto
 - Cuota 3: $400.00 — 5 de septiembre
+
+Ejemplo B: misma tarjeta, compra el 15 de mayo (día de corte):
+- El 15 = 15 (no es menor) → primer corte: 15 de **julio** → vencimiento: 4 de agosto
+- Cuota 1: $400.00 — 4 de agosto
+- Cuota 2: $400.00 — 4 de septiembre
+- Cuota 3: $400.00 — 4 de octubre
 
 ---
 
