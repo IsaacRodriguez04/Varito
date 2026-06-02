@@ -27,7 +27,7 @@ export function calculateFirstDueDate(
 
   let cutDate: Date
 
-  if (pDay <= cutDay) {
+  if (pDay < cutDay) {
     cutDate = resolvedCutDate(pYear, pMonth, cutDay)
   } else {
     const nextMonth = pMonth === 12 ? 1 : pMonth + 1

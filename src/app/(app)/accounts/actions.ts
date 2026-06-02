@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { buildInstallmentSchedule } from '@/lib/msi-calculator'
 import type { AccountType } from '@/types/app.types'
 
 interface AccountPayload {
@@ -36,7 +37,68 @@ export async function updateAccount(id: string, data: AccountPayload) {
     .eq('id', id)
     .eq('user_id', user.id)
   if (error) throw new Error(error.message)
+
+  if (data.type === 'credit' && data.cut_day && data.days_to_due) {
+    await recalculateUnpaidInstallments(supabase, user.id, id, data.cut_day, data.days_to_due)
+  }
+
   revalidatePath('/accounts')
+  revalidatePath('/calendar')
+  revalidatePath('/dashboard')
+}
+
+async function recalculateUnpaidInstallments(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  accountId: string,
+  cutDay: number,
+  daysTodue: number
+) {
+  const { data: movements } = await supabase
+    .from('movements')
+    .select('id, date, amount, installments')
+    .eq('account_id', accountId)
+    .eq('user_id', userId)
+    .eq('type', 'expense')
+
+  if (!movements?.length) return
+
+  for (const mv of movements) {
+    const { data: paidRows } = await supabase
+      .from('installments')
+      .select('installment_number')
+      .eq('movement_id', mv.id)
+      .eq('is_paid', true)
+
+    await supabase
+      .from('installments')
+      .delete()
+      .eq('movement_id', mv.id)
+      .eq('is_paid', false)
+
+    const paidNumbers = new Set((paidRows ?? []).map((r) => r.installment_number))
+    const schedule = buildInstallmentSchedule(
+      new Date(mv.date + 'T12:00:00'),
+      mv.amount,
+      mv.installments,
+      cutDay,
+      daysTodue
+    )
+
+    const toInsert = schedule
+      .filter((item) => !paidNumbers.has(item.installment_number))
+      .map((item) => ({
+        movement_id: mv.id,
+        user_id: userId,
+        installment_number: item.installment_number,
+        due_date: item.due_date,
+        amount: item.amount,
+      }))
+
+    if (toInsert.length > 0) {
+      await supabase.from('installments').insert(toInsert)
+    }
+  }
 }
 
 export async function deleteAccount(id: string) {
