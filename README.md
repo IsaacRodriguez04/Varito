@@ -110,7 +110,7 @@ profiles ───────────────────────�
 - Los movimientos de tipo `income` y `saving` solo permiten seleccionar cuentas de débito o efectivo (no tarjetas de crédito). El balance de cuentas débito/efectivo los contabiliza: ingresos suman, ahorros y gastos restan.
 - Un `movement` de tipo `saving` puede tener `goal_id` apuntando a una meta activa. Al crear/editar/borrar ese movimiento, `goals.saved_amount` se ajusta automáticamente. Si no se asigna meta, el ahorro se registra como "ahorro general" sin afectar ninguna meta.
 - Al marcar una cuota como pagada desde el calendario eligiendo una cuenta de débito/efectivo, se crea automáticamente un `movement` de tipo `transfer` con `is_calendar_payment = true` y se vincula a la cuota vía `payment_movement_id`. Ese movimiento no puede editarse ni borrarse manualmente desde la lista de movimientos; se elimina automáticamente al desmarcar la cuota.
-- La categoría sistema **"Bonificación bancaria"** (🎁) solo es seleccionable en movimientos de tipo `income`. Se recomienda registrar cashback y devoluciones bancarias como ingreso en la cuenta de débito o efectivo con esta categoría. La app muestra un aviso en la tarjeta de la cuenta mientras el monto bonificado no haya sido superado por los egresos posteriores de esa misma cuenta.
+- La categoría sistema **"Bonificación bancaria"** (🎁) solo es seleccionable en movimientos de tipo `income`. Se recomienda registrar cashback y devoluciones bancarias como ingreso en la cuenta de débito o efectivo con esta categoría. La app muestra un aviso en la tarjeta de la cuenta mientras el monto bonificado no haya sido superado por la suma de cuotas de tarjeta de crédito pagadas cuya **fecha de corte** (`due_date − days_to_due`) sea posterior a la fecha de la bonificación.
 - RLS garantiza que cada query retorna únicamente filas donde `user_id = auth.uid()`.
 
 ---
@@ -251,7 +251,7 @@ Las bonificaciones (cashback, devolución de comisiones, puntos canjeados) se re
 
 La categoría "Bonificación bancaria" solo es seleccionable cuando el tipo de movimiento es `income`; en cualquier otro tipo no aparece en el selector.
 
-En la pantalla de **Cuentas**, la tarjeta de cada cuenta de débito/efectivo muestra un aviso verde mientras exista saldo de bonificación sin consumir en el mes actual. El aviso desaparece automáticamente cuando los egresos de esa cuenta posteriores a la bonificación superan el monto bonificado.
+En la pantalla de **Cuentas**, la tarjeta de cada cuenta de débito/efectivo muestra un aviso verde mientras exista saldo de bonificación sin consumir. El aviso desaparece automáticamente cuando las cuotas de tarjeta de crédito **pagadas** cuya **fecha de corte** (`due_date − days_to_due`) es posterior a la fecha de la bonificación superan en suma el monto bonificado. Solo los pagos de tarjeta cuentan para reducir el aviso; los gastos cotidianos directos no lo consumen.
 
 ### FAQ en perfil
 

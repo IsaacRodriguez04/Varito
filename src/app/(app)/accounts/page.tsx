@@ -117,7 +117,7 @@ export default async function AccountsPage() {
         .gt('due_date', earliestDate)
 
       for (const [accId, bonif] of Object.entries(latestBonifByAccount)) {
-        const paidAfter = ((paidInst ?? []) as PaidInstRow[])
+        const paidAfter = ((paidInst ?? []) as unknown as PaidInstRow[])
           .filter((i) => {
             const daysTodue = i.movement?.account?.days_to_due ?? 0
             const cutDate = format(subDays(parseISO(i.due_date), daysTodue), 'yyyy-MM-dd')
