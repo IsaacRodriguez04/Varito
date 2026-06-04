@@ -65,6 +65,12 @@ export function MovementSheet({
   const needsDest = type === 'transfer'
   const needsMSI = type === 'expense' && isCredit
 
+  const accountOptions = accounts.filter((a) => {
+    if (!a.is_active) return false
+    if (type === 'income' || type === 'saving') return a.type !== 'credit'
+    return true
+  })
+
   const accountLabel =
     type === 'transfer' ? 'Cuenta origen' :
     type === 'income'   ? 'Cuenta destino' :
@@ -74,6 +80,9 @@ export function MovementSheet({
     setType(t)
     if (t !== 'expense') { setInstallments(1); setCustomInstallments('') }
     if (t !== 'saving') setGoalId('')
+    if ((t === 'income' || t === 'saving') && selectedAccount?.type === 'credit') {
+      setAccountId('')
+    }
   }
 
   function handleAccountChange(id: string | null) {
@@ -235,13 +244,13 @@ export function MovementSheet({
               <Select
                 value={accountId}
                 onValueChange={handleAccountChange}
-                items={accounts.filter((a) => a.is_active).map((a) => ({ value: a.id, label: `${a.name}${a.bank ? ` · ${a.bank}` : ''}` }))}
+                items={accountOptions.map((a) => ({ value: a.id, label: `${a.name}${a.bank ? ` · ${a.bank}` : ''}` }))}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Selecciona…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {accounts.filter((a) => a.is_active).map((a) => (
+                  {accountOptions.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name}{a.bank ? ` · ${a.bank}` : ''}
                     </SelectItem>

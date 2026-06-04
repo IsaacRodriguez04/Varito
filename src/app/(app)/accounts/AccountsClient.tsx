@@ -36,9 +36,10 @@ interface AccountsClientProps {
   accounts: Account[]
   balanceMap: Record<string, number>
   creditDebtMap: Record<string, number>
+  bonifRemainingMap: Record<string, number>
 }
 
-export function AccountsClient({ accounts, balanceMap, creditDebtMap }: AccountsClientProps) {
+export function AccountsClient({ accounts, balanceMap, creditDebtMap, bonifRemainingMap }: AccountsClientProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | undefined>()
   const [deletingAccount, setDeletingAccount] = useState<Account | undefined>()
@@ -93,6 +94,7 @@ export function AccountsClient({ accounts, balanceMap, creditDebtMap }: Accounts
                     account={account}
                     balance={balanceMap[account.id]}
                     creditDebt={creditDebtMap[account.id]}
+                    bonifRemaining={bonifRemainingMap[account.id]}
                     onEdit={() => openEdit(account)}
                     onDelete={() => setDeletingAccount(account)}
                   />
@@ -147,12 +149,14 @@ function AccountCard({
   account,
   balance,
   creditDebt,
+  bonifRemaining,
   onEdit,
   onDelete,
 }: {
   account: Account
   balance?: number
   creditDebt?: number
+  bonifRemaining?: number
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -235,6 +239,17 @@ function AccountCard({
               style={{ width: `${usedPct}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Bonification banner */}
+      {!isCredit && bonifRemaining !== undefined && bonifRemaining > 0 && (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 space-y-0.5">
+          <p className="font-semibold">🎁 Tienes {formatMXN(balance ?? 0)} en esta cuenta</p>
+          <p>
+            De los cuales <span className="font-semibold">{formatMXN(bonifRemaining)}</span> son por bonificaciones bancarias.
+            Úsalos primero para pagar tu tarjeta de crédito.
+          </p>
         </div>
       )}
     </div>

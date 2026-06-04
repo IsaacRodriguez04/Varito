@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SignOutButton } from '@/components/layout/SignOutButton'
 import { NotificationSettings } from '@/components/layout/NotificationSettings'
+import { FAQ } from '@/components/layout/FAQ'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -55,6 +56,9 @@ export default async function SettingsPage() {
 
         {/* ── Notifications ── */}
         <NotificationSettings />
+
+        {/* ── FAQ ── */}
+        <FAQ />
 
         {/* ── Sign out ── */}
         <section className="rounded-xl border bg-card p-4">

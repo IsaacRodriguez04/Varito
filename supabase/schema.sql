@@ -210,7 +210,8 @@ BEGIN
     (profile_id, 'Freelance',            '💻', '#6366f1', true),
     (profile_id, 'Transferencia propia', '🔄', '#94a3b8', true),
     (profile_id, 'Pago a tercero',       '💸', '#f43f5e', true),
-    (profile_id, 'Otros',                '📦', '#64748b', true);
+    (profile_id, 'Otros',                '📦', '#64748b', true),
+    (profile_id, 'Bonificación bancaria','🎁', '#10b981', true);
 
   RETURN NEW;
 END;
