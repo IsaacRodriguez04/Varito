@@ -79,15 +79,17 @@ profiles ───────────────────────�
     │     ├── account_id → accounts    │
     │     ├── destination_account_id   │  (solo en transfers)
     │     ├── goal_id → goals          │  (solo en saving, opcional)
-    │     └── installments: 1/3/6/... │
+    │     ├── installments: 1/3/6/... │
+    │     └── is_calendar_payment     │  (true si fue generado desde el calendario)
     │           │                      │
     │           │ (si es expense+credit│ y MSI > 1)
     │           ▼                      │
     │       installments               │
     │           ├── installment_number │
-    │           ├── due_date           │
-    │           ├── amount             │
-    │           └── is_paid / paid_at  │
+    │           ├── due_date              │
+    │           ├── amount               │
+    │           ├── is_paid / paid_at    │
+    │           └── payment_movement_id  │  (FK → movements, ON DELETE SET NULL)
     │                                  │
     └── push_subscriptions ────────────┘
           ├── endpoint
@@ -105,8 +107,10 @@ profiles ───────────────────────�
 - El campo `installments` acepta cualquier valor entero ≥ 1, no solo los plazos típicos (3, 6, 12…). El formulario ofrece botones rápidos para los valores comunes y un input libre para plazos atípicos.
 - El campo `is_recurring` en movements marca si un movimiento debe sugerirse cada mes.
 - Los `budgets` son límites de gasto por categoría por mes (`YYYY-MM`). La restricción `UNIQUE (user_id, category_id, month)` garantiza un solo presupuesto por categoría por mes; el upsert actualiza si ya existe.
-- Los movimientos de tipo `income` y `saving` requieren `account_id` (cuenta destino / cuenta origen respectivamente). El balance de cuentas débito/efectivo los contabiliza: ingresos suman, ahorros restan.
+- Los movimientos de tipo `income` y `saving` solo permiten seleccionar cuentas de débito o efectivo (no tarjetas de crédito). El balance de cuentas débito/efectivo los contabiliza: ingresos suman, ahorros y gastos restan.
 - Un `movement` de tipo `saving` puede tener `goal_id` apuntando a una meta activa. Al crear/editar/borrar ese movimiento, `goals.saved_amount` se ajusta automáticamente. Si no se asigna meta, el ahorro se registra como "ahorro general" sin afectar ninguna meta.
+- Al marcar una cuota como pagada desde el calendario eligiendo una cuenta de débito/efectivo, se crea automáticamente un `movement` de tipo `transfer` con `is_calendar_payment = true` y se vincula a la cuota vía `payment_movement_id`. Ese movimiento no puede editarse ni borrarse manualmente desde la lista de movimientos; se elimina automáticamente al desmarcar la cuota.
+- La categoría sistema **"Bonificación bancaria"** (🎁) solo es seleccionable en movimientos de tipo `income`. Se recomienda registrar cashback y devoluciones bancarias como ingreso en la cuenta de débito o efectivo con esta categoría. La app muestra un aviso en la tarjeta de la cuenta mientras el monto bonificado no haya sido superado por los egresos posteriores de esa misma cuenta.
 - RLS garantiza que cada query retorna únicamente filas donde `user_id = auth.uid()`.
 
 ---
@@ -230,6 +234,29 @@ Al abrir la pantalla de movimientos de cualquier mes, si existen movimientos rec
 - **Agregar** → abre el formulario pre-relleno con los datos del movimiento anterior. El nuevo movimiento también queda marcado como recurrente por defecto, por lo que se seguirá sugiriendo el mes siguiente.
 - **Detener** → llama al servidor para poner `is_recurring = false` en el movimiento original. Desaparece del banner de forma inmediata (optimista) y ya no se sugiere en meses futuros.
 
+### Pagos desde el calendario
+
+Al marcar una cuota como pagada en `/calendar`, si hay cuentas de débito/efectivo registradas, la app pregunta desde qué cuenta se realiza el pago. Al confirmar:
+
+- La cuota queda marcada como `is_paid = true`.
+- Se crea un movimiento de tipo `transfer` (cuenta débito → tarjeta de crédito) con `is_calendar_payment = true`, que reduce el saldo de la cuenta origen.
+- El movimiento aparece en la lista de movimientos con el badge **📅 Calendario** y sin botones de editar ni borrar.
+- Al desmarcar la cuota, el movimiento de transferencia se elimina automáticamente y el saldo de la cuenta origen se restaura.
+
+Si se elige "Sin cuenta (solo marcar pagado)", la cuota se marca pagada sin crear ningún movimiento de transferencia.
+
+### Bonificaciones bancarias
+
+Las bonificaciones (cashback, devolución de comisiones, puntos canjeados) se registran como movimientos de tipo **Ingreso** en la cuenta de débito o efectivo habitual, usando la categoría sistema **Bonificación bancaria** (🎁). Esto preserva el historial de gastos intacto: el gasto ocurrió en su momento y la devolución llega después como ingreso separado.
+
+La categoría "Bonificación bancaria" solo es seleccionable cuando el tipo de movimiento es `income`; en cualquier otro tipo no aparece en el selector.
+
+En la pantalla de **Cuentas**, la tarjeta de cada cuenta de débito/efectivo muestra un aviso verde mientras exista saldo de bonificación sin consumir en el mes actual. El aviso desaparece automáticamente cuando los egresos de esa cuenta posteriores a la bonificación superan el monto bonificado.
+
+### FAQ en perfil
+
+La pantalla de **Perfil** (`/settings`) incluye una sección de preguntas frecuentes con 28 preguntas en accordion que cubren todos los flujos de la app: movimientos, MSI, cuentas, transferencias, bonificaciones, metas, calendario, reportes, notificaciones, PWA y seguridad.
+
 ### Búsqueda y filtros en movimientos
 
 En la parte superior de la pantalla de movimientos hay:
@@ -316,6 +343,23 @@ ALTER TABLE movements
   ADD COLUMN IF NOT EXISTS goal_id UUID REFERENCES goals(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_movements_goal_id ON movements(goal_id);
+
+-- 4. Pagos de calendario: movimiento vinculado a cuotas
+ALTER TABLE movements
+  ADD COLUMN IF NOT EXISTS is_calendar_payment BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE installments
+  ADD COLUMN IF NOT EXISTS payment_movement_id UUID REFERENCES movements(id) ON DELETE SET NULL;
+
+-- 5. Categoría sistema "Bonificación bancaria" para usuarios existentes
+INSERT INTO categories (user_id, name, icon, color, is_system)
+SELECT id, 'Bonificación bancaria', '🎁', '#10b981', true
+FROM profiles
+WHERE NOT EXISTS (
+  SELECT 1 FROM categories
+  WHERE categories.user_id = profiles.id
+  AND categories.name = 'Bonificación bancaria'
+);
 ```
 
 ---
