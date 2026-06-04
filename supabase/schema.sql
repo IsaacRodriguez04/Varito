@@ -80,6 +80,7 @@ CREATE TABLE movements (
   installments           SMALLINT NOT NULL DEFAULT 1
                            CHECK (installments >= 1),
   is_recurring           BOOLEAN NOT NULL DEFAULT false,
+  is_calendar_payment    BOOLEAN NOT NULL DEFAULT false,
   notes                  TEXT,
   goal_id                UUID REFERENCES goals(id) ON DELETE SET NULL,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -105,9 +106,10 @@ CREATE TABLE installments (
   installment_number SMALLINT NOT NULL,
   due_date           DATE NOT NULL,
   amount             NUMERIC(12,2) NOT NULL,
-  is_paid            BOOLEAN NOT NULL DEFAULT false,
-  paid_at            TIMESTAMPTZ,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+  is_paid              BOOLEAN NOT NULL DEFAULT false,
+  paid_at              TIMESTAMPTZ,
+  payment_movement_id  UUID REFERENCES movements(id) ON DELETE SET NULL,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE installments ENABLE ROW LEVEL SECURITY;

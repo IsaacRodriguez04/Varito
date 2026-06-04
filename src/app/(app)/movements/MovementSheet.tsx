@@ -80,8 +80,10 @@ export function MovementSheet({
     setType(t)
     if (t !== 'expense') { setInstallments(1); setCustomInstallments('') }
     if (t !== 'saving') setGoalId('')
-    if ((t === 'income' || t === 'saving') && selectedAccount?.type === 'credit') {
-      setAccountId('')
+    if ((t === 'income' || t === 'saving') && selectedAccount?.type === 'credit') setAccountId('')
+    if (t !== 'income') {
+      const selCat = categories.find((c) => c.id === categoryId)
+      if (selCat?.name === 'Bonificación bancaria') setCategoryId('')
     }
   }
 
@@ -219,22 +221,29 @@ export function MovementSheet({
           {/* Category */}
           <div className="space-y-1.5">
             <Label>Categoría</Label>
-            <Select
-              value={categoryId}
-              onValueChange={(v) => setCategoryId(v ?? '')}
-              items={categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name}` }))}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Selecciona…" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.icon} {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {(() => {
+              const availableCats = categories.filter(
+                (c) => !(c.name === 'Bonificación bancaria' && type !== 'income')
+              )
+              return (
+                <Select
+                  value={categoryId}
+                  onValueChange={(v) => setCategoryId(v ?? '')}
+                  items={availableCats.map((c) => ({ value: c.id, label: `${c.icon} ${c.name}` }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecciona…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCats.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.icon} {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )
+            })()}
           </div>
 
           {/* Account */}

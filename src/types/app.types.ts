@@ -45,6 +45,7 @@ export interface Movement {
   amount: number
   installments: MSIOption
   is_recurring: boolean
+  is_calendar_payment: boolean
   notes: string | null
   goal_id: string | null
   created_at: string
@@ -86,6 +87,7 @@ export interface Installment {
   amount: number
   is_paid: boolean
   paid_at: string | null
+  payment_movement_id: string | null
   created_at: string
   movement?: Movement
 }

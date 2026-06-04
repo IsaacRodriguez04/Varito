@@ -13,14 +13,37 @@ async function getUser() {
 
 export async function toggleInstallmentPaid(id: string, isPaid: boolean) {
   const { supabase, user } = await getUser()
+
+  if (!isPaid) {
+    // Al desmarcar, borrar el movimiento de pago vinculado si existe.
+    // ON DELETE SET NULL limpia payment_movement_id de todas las cuotas que lo referenciaban.
+    const { data: inst } = await supabase
+      .from('installments')
+      .select('payment_movement_id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (inst?.payment_movement_id) {
+      await supabase
+        .from('movements')
+        .delete()
+        .eq('id', inst.payment_movement_id)
+        .eq('user_id', user.id)
+    }
+  }
+
   const { error } = await supabase
     .from('installments')
     .update({ is_paid: isPaid, paid_at: isPaid ? new Date().toISOString() : null })
     .eq('id', id)
     .eq('user_id', user.id)
   if (error) throw new Error(error.message)
+
   revalidatePath('/calendar')
   revalidatePath('/dashboard')
+  revalidatePath('/accounts')
+  revalidatePath('/movements')
 }
 
 export async function payInstallments(
@@ -48,7 +71,7 @@ export async function payInstallments(
       .single()
 
     if (cat) {
-      const { error: mvError } = await supabase
+      const { data: movement, error: mvError } = await supabase
         .from('movements')
         .insert({
           user_id: user.id,
@@ -61,9 +84,21 @@ export async function payInstallments(
           amount: totalAmount,
           installments: 1,
           is_recurring: false,
+          is_calendar_payment: true,
           goal_id: null,
         })
+        .select('id')
+        .single()
       if (mvError) throw new Error(mvError.message)
+
+      // Vincular el movimiento a cada cuota pagada para poder borrarlo al desmarcar
+      if (movement) {
+        await supabase
+          .from('installments')
+          .update({ payment_movement_id: movement.id })
+          .in('id', ids)
+          .eq('user_id', user.id)
+      }
     }
   }
 

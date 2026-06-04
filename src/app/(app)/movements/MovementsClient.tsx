@@ -388,6 +388,7 @@ function MovementRow({
   const cat = movement.category as Category | undefined
   const account = movement.account as Account | undefined
   const isMSI = movement.type === 'expense' && movement.installments > 1
+  const isCalendarPayment = movement.is_calendar_payment
 
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-card px-3 py-2.5">
@@ -415,6 +416,11 @@ function MovementRow({
               ↻
             </span>
           )}
+          {isCalendarPayment && (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              📅 Calendario
+            </span>
+          )}
         </div>
       </div>
 
@@ -425,17 +431,23 @@ function MovementRow({
 
       {/* Actions */}
       <div className="flex gap-0.5">
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-destructive hover:text-destructive"
-          onClick={onDelete}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        {isCalendarPayment ? (
+          <span className="w-14" />
+        ) : (
+          <>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive hover:text-destructive"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        )}
       </div>
     </div>
   )
