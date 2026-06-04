@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AccountsClient } from './AccountsClient'
-import { todayISO, currentYearMonth, monthStart, monthEnd } from '@/lib/date-utils'
+import { todayISO } from '@/lib/date-utils'
 import type { Account } from '@/types/app.types'
 
 type MovementRow = {
@@ -19,19 +19,16 @@ type InstallmentRow = {
 type BonifRow = {
   account_id: string | null
   amount: number
+  date: string
 }
 
-type OutflowRow = {
-  account_id: string | null
+type PaidInstallmentRow = {
   amount: number
-  type: string
+  due_date: string
 }
 
 export default async function AccountsPage() {
   const supabase = await createClient()
-  const currentMonth = currentYearMonth()
-  const mStart = monthStart(currentMonth)
-  const mEnd = monthEnd(currentMonth)
 
   const [
     { data: accounts },
@@ -83,38 +80,46 @@ export default async function AccountsPage() {
     creditDebtMap[accId] = (creditDebtMap[accId] ?? 0) + inst.amount
   }
 
-  // Remanente de bonificaciones del mes por cuenta débito/efectivo
+  // Remanente de bonificaciones por cuenta débito/efectivo.
+  // Lógica: la bonificación más reciente por cuenta se compara contra
+  // el total de cuotas pagadas (is_paid=true) con due_date posterior a
+  // la fecha de esa bonificación. Así, marcar/desmarcar cuotas anteriores
+  // a la bonificación no afecta el cálculo.
   const bonifRemainingMap: Record<string, number> = {}
   if (bonifCategory?.id) {
-    const [{ data: bonifRows }, { data: outflowRows }] = await Promise.all([
-      supabase
-        .from('movements')
-        .select('account_id, amount')
-        .eq('type', 'income')
-        .eq('category_id', bonifCategory.id)
-        .gte('date', mStart)
-        .lte('date', mEnd),
-      supabase
-        .from('movements')
-        .select('account_id, amount, type')
-        .in('type', ['expense', 'saving', 'transfer'])
-        .gte('date', mStart)
-        .lte('date', mEnd),
-    ])
+    const { data: bonifRows } = await supabase
+      .from('movements')
+      .select('account_id, amount, date')
+      .eq('type', 'income')
+      .eq('category_id', bonifCategory.id)
+      .order('date', { ascending: false })
 
-    const bonifByAccount: Record<string, number> = {}
+    // Tomar solo la bonificación más reciente por cuenta
+    const latestBonifByAccount: Record<string, { amount: number; date: string }> = {}
     for (const row of (bonifRows ?? []) as BonifRow[]) {
-      if (row.account_id) bonifByAccount[row.account_id] = (bonifByAccount[row.account_id] ?? 0) + row.amount
+      if (row.account_id && !latestBonifByAccount[row.account_id]) {
+        latestBonifByAccount[row.account_id] = { amount: row.amount, date: row.date }
+      }
     }
 
-    const outflowByAccount: Record<string, number> = {}
-    for (const row of (outflowRows ?? []) as OutflowRow[]) {
-      if (row.account_id) outflowByAccount[row.account_id] = (outflowByAccount[row.account_id] ?? 0) + row.amount
-    }
+    if (Object.keys(latestBonifByAccount).length > 0) {
+      const earliestDate = Object.values(latestBonifByAccount)
+        .map((b) => b.date)
+        .sort()[0]
 
-    for (const [accId, bonif] of Object.entries(bonifByAccount)) {
-      const remaining = bonif - (outflowByAccount[accId] ?? 0)
-      if (remaining > 0) bonifRemainingMap[accId] = remaining
+      const { data: paidInst } = await supabase
+        .from('installments')
+        .select('amount, due_date')
+        .eq('is_paid', true)
+        .gt('due_date', earliestDate)
+
+      for (const [accId, bonif] of Object.entries(latestBonifByAccount)) {
+        const paidAfter = ((paidInst ?? []) as PaidInstallmentRow[])
+          .filter((i) => i.due_date > bonif.date)
+          .reduce((sum, i) => sum + i.amount, 0)
+        const remaining = bonif.amount - paidAfter
+        if (remaining > 0) bonifRemainingMap[accId] = remaining
+      }
     }
   }
 
