@@ -46,10 +46,11 @@ interface PayState {
 interface CalendarClientProps {
   installments: InstallmentDetail[]
   selectedMonth: string
-  debitAccounts: Pick<Account, 'id' | 'name' | 'bank' | 'color' | 'type'>[]
+  debitAccounts: Pick<Account, 'id' | 'name' | 'bank' | 'color' | 'type' | 'initial_balance'>[]
+  balanceMap: Record<string, number>
 }
 
-export function CalendarClient({ installments, selectedMonth, debitAccounts }: CalendarClientProps) {
+export function CalendarClient({ installments, selectedMonth, debitAccounts, balanceMap }: CalendarClientProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [paySheet, setPaySheet] = useState<PayState | null>(null)
@@ -302,6 +303,7 @@ export function CalendarClient({ installments, selectedMonth, debitAccounts }: C
         <PayDialog
           state={paySheet}
           debitAccounts={debitAccounts}
+          balanceMap={balanceMap}
           isPending={isPending}
           onClose={() => setPaySheet(null)}
           onConfirm={handleConfirmPay}
@@ -314,17 +316,22 @@ export function CalendarClient({ installments, selectedMonth, debitAccounts }: C
 function PayDialog({
   state,
   debitAccounts,
+  balanceMap,
   isPending,
   onClose,
   onConfirm,
 }: {
   state: PayState
-  debitAccounts: Pick<Account, 'id' | 'name' | 'bank' | 'color' | 'type'>[]
+  debitAccounts: Pick<Account, 'id' | 'name' | 'bank' | 'color' | 'type' | 'initial_balance'>[]
+  balanceMap: Record<string, number>
   isPending: boolean
   onClose: () => void
   onConfirm: (sourceAccountId: string | null) => void
 }) {
   const [selectedAccountId, setSelectedAccountId] = useState('')
+
+  const selectedBalance = selectedAccountId ? (balanceMap[selectedAccountId] ?? 0) : null
+  const insufficient = selectedBalance !== null && selectedBalance < state.totalAmount
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -348,10 +355,14 @@ function PayDialog({
               onValueChange={(v) => setSelectedAccountId(v ?? '')}
               items={[
                 { value: '', label: 'Sin cuenta (solo marcar pagado)' },
-                ...debitAccounts.map((a) => ({
-                  value: a.id,
-                  label: `${a.name}${a.bank ? ` · ${a.bank}` : ''}`,
-                })),
+                ...debitAccounts.map((a) => {
+                  const bal = balanceMap[a.id] ?? 0
+                  const hasEnough = bal >= state.totalAmount
+                  return {
+                    value: a.id,
+                    label: `${a.name}${a.bank ? ` · ${a.bank}` : ''} — ${formatMXN(bal)}${!hasEnough ? ' ✕' : ''}`,
+                  }
+                }),
               ]}
             >
               <SelectTrigger className="w-full">
@@ -359,13 +370,29 @@ function PayDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Sin cuenta (solo marcar pagado)</SelectItem>
-                {debitAccounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}{a.bank ? ` · ${a.bank}` : ''}
-                  </SelectItem>
-                ))}
+                {debitAccounts.map((a) => {
+                  const bal = balanceMap[a.id] ?? 0
+                  const hasEnough = bal >= state.totalAmount
+                  return (
+                    <SelectItem key={a.id} value={a.id} disabled={!hasEnough}>
+                      <span className={cn(!hasEnough && 'text-muted-foreground')}>
+                        {a.name}{a.bank ? ` · ${a.bank}` : ''}
+                        <span className="ml-1.5 tabular-nums text-xs">
+                          {formatMXN(bal)}
+                        </span>
+                        {!hasEnough && <span className="ml-1 text-destructive text-xs">· Saldo insuficiente</span>}
+                      </span>
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
+
+            {insufficient && (
+              <p className="text-xs text-destructive">
+                Saldo disponible {formatMXN(selectedBalance!)} — faltan {formatMXN(state.totalAmount - selectedBalance!)} para completar el pago.
+              </p>
+            )}
           </div>
         </div>
 
@@ -374,7 +401,7 @@ function PayDialog({
             Cancelar
           </Button>
           <Button
-            disabled={isPending}
+            disabled={isPending || insufficient}
             onClick={() => onConfirm(selectedAccountId || null)}
           >
             {isPending ? 'Guardando…' : 'Confirmar pago'}

@@ -55,6 +55,38 @@ export async function payInstallments(
 ) {
   const { supabase, user } = await getUser()
 
+  if (sourceAccountId) {
+    const [{ data: acc }, { data: mvs }] = await Promise.all([
+      supabase
+        .from('accounts')
+        .select('initial_balance')
+        .eq('id', sourceAccountId)
+        .eq('user_id', user.id)
+        .single(),
+      supabase
+        .from('movements')
+        .select('account_id, destination_account_id, type, amount')
+        .eq('user_id', user.id),
+    ])
+
+    let balance = (acc?.initial_balance as number | null) ?? 0
+    for (const m of (mvs ?? []) as { account_id: string | null; destination_account_id: string | null; type: string; amount: number }[]) {
+      if (m.account_id === sourceAccountId) {
+        if (m.type === 'income') balance += m.amount
+        else if (m.type === 'expense' || m.type === 'saving' || m.type === 'transfer') balance -= m.amount
+      }
+      if (m.destination_account_id === sourceAccountId && m.type === 'transfer') {
+        balance += m.amount
+      }
+    }
+
+    if (balance < totalAmount) {
+      throw new Error(
+        `Saldo insuficiente. Disponible: $${balance.toFixed(2)}, necesario: $${totalAmount.toFixed(2)}.`
+      )
+    }
+  }
+
   const { error } = await supabase
     .from('installments')
     .update({ is_paid: true, paid_at: new Date().toISOString() })
