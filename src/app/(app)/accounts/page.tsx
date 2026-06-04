@@ -22,9 +22,10 @@ type BonifRow = {
   date: string
 }
 
-type PaidInstallmentRow = {
+type OutflowRow = {
+  account_id: string | null
   amount: number
-  due_date: string
+  date: string
 }
 
 export default async function AccountsPage() {
@@ -81,10 +82,9 @@ export default async function AccountsPage() {
   }
 
   // Remanente de bonificaciones por cuenta débito/efectivo.
-  // Lógica: la bonificación más reciente por cuenta se compara contra
-  // el total de cuotas pagadas (is_paid=true) con due_date posterior a
-  // la fecha de esa bonificación. Así, marcar/desmarcar cuotas anteriores
-  // a la bonificación no afecta el cálculo.
+  // Lógica: bonificación más reciente por cuenta vs. egresos de esa misma
+  // cuenta con fecha posterior a la bonificación. El banner desaparece
+  // cuando los egresos post-bonificación superan el monto bonificado.
   const bonifRemainingMap: Record<string, number> = {}
   if (bonifCategory?.id) {
     const { data: bonifRows } = await supabase
@@ -107,17 +107,18 @@ export default async function AccountsPage() {
         .map((b) => b.date)
         .sort()[0]
 
-      const { data: paidInst } = await supabase
-        .from('installments')
-        .select('amount, due_date')
-        .eq('is_paid', true)
-        .gt('due_date', earliestDate)
+      // Egresos de cualquier cuenta débito/efectivo posteriores a la bonificación más antigua
+      const { data: outflowRows } = await supabase
+        .from('movements')
+        .select('account_id, amount, date')
+        .in('type', ['expense', 'saving', 'transfer'])
+        .gt('date', earliestDate)
 
       for (const [accId, bonif] of Object.entries(latestBonifByAccount)) {
-        const paidAfter = ((paidInst ?? []) as PaidInstallmentRow[])
-          .filter((i) => i.due_date > bonif.date)
-          .reduce((sum, i) => sum + i.amount, 0)
-        const remaining = bonif.amount - paidAfter
+        const outflowsAfter = ((outflowRows ?? []) as OutflowRow[])
+          .filter((m) => m.account_id === accId && m.date > bonif.date)
+          .reduce((sum, m) => sum + m.amount, 0)
+        const remaining = bonif.amount - outflowsAfter
         if (remaining > 0) bonifRemainingMap[accId] = remaining
       }
     }
