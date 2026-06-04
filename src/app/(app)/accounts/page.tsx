@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AccountsClient } from './AccountsClient'
 import { todayISO } from '@/lib/date-utils'
+import { subDays, parseISO, format } from 'date-fns'
 import type { Account } from '@/types/app.types'
 
 type MovementRow = {
@@ -22,10 +23,10 @@ type BonifRow = {
   date: string
 }
 
-type OutflowRow = {
-  account_id: string | null
+type PaidInstRow = {
   amount: number
-  date: string
+  due_date: string
+  movement: { account: { days_to_due: number | null } | null } | null
 }
 
 export default async function AccountsPage() {
@@ -107,18 +108,23 @@ export default async function AccountsPage() {
         .map((b) => b.date)
         .sort()[0]
 
-      // Egresos de cualquier cuenta débito/efectivo posteriores a la bonificación más antigua
-      const { data: outflowRows } = await supabase
-        .from('movements')
-        .select('account_id, amount, date')
-        .in('type', ['expense', 'saving', 'transfer'])
-        .gt('date', earliestDate)
+      // Solo cuotas cuya fecha de corte (due_date - days_to_due) sea posterior
+      // a la bonificación restan el saldo. Gastos normales NO consumen el bono.
+      const { data: paidInst } = await supabase
+        .from('installments')
+        .select('amount, due_date, movement:movements!movement_id(account:accounts!account_id(days_to_due))')
+        .eq('is_paid', true)
+        .gt('due_date', earliestDate)
 
       for (const [accId, bonif] of Object.entries(latestBonifByAccount)) {
-        const outflowsAfter = ((outflowRows ?? []) as OutflowRow[])
-          .filter((m) => m.account_id === accId && m.date > bonif.date)
-          .reduce((sum, m) => sum + m.amount, 0)
-        const remaining = bonif.amount - outflowsAfter
+        const paidAfter = ((paidInst ?? []) as PaidInstRow[])
+          .filter((i) => {
+            const daysTodue = i.movement?.account?.days_to_due ?? 0
+            const cutDate = format(subDays(parseISO(i.due_date), daysTodue), 'yyyy-MM-dd')
+            return cutDate > bonif.date
+          })
+          .reduce((sum, i) => sum + i.amount, 0)
+        const remaining = bonif.amount - paidAfter
         if (remaining > 0) bonifRemainingMap[accId] = remaining
       }
     }
