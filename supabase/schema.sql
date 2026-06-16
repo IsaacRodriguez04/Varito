@@ -32,9 +32,10 @@ CREATE TABLE accounts (
   color        TEXT NOT NULL DEFAULT '#6366f1',
   is_active    BOOLEAN NOT NULL DEFAULT true,
   credit_limit NUMERIC(12,2),
-  cut_day      SMALLINT CHECK (cut_day BETWEEN 1 AND 31),
-  days_to_due  SMALLINT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  cut_day         SMALLINT CHECK (cut_day BETWEEN 1 AND 31),
+  days_to_due     SMALLINT,
+  initial_balance NUMERIC(12,2) NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;

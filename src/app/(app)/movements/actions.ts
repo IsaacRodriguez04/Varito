@@ -192,6 +192,58 @@ export async function deleteMovement(id: string) {
   revalidatePaths()
 }
 
+export async function applyRecurringSuggestion(sourceId: string, targetMonth: string) {
+  const { supabase, user } = await getUser()
+
+  const { data: source, error: fetchError } = await supabase
+    .from('movements')
+    .select('date, description, type, category_id, account_id, destination_account_id, amount, installments, is_recurring, notes, goal_id')
+    .eq('id', sourceId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (fetchError || !source) throw new Error('Movimiento no encontrado')
+
+  const day = parseInt(source.date.split('-')[2], 10)
+  const [yearStr, monthStr] = targetMonth.split('-')
+  const lastDay = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10), 0).getDate()
+  const newDate = `${targetMonth}-${String(Math.min(day, lastDay)).padStart(2, '0')}`
+
+  const { data: movement, error } = await supabase
+    .from('movements')
+    .insert({
+      user_id: user.id,
+      date: newDate,
+      description: source.description,
+      type: source.type,
+      category_id: source.category_id,
+      account_id: source.account_id,
+      destination_account_id: source.destination_account_id,
+      amount: source.amount,
+      installments: source.installments,
+      is_recurring: source.is_recurring,
+      notes: source.notes,
+      goal_id: source.goal_id,
+    })
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  if (source.type === 'expense' && source.account_id) {
+    await generateInstallments(
+      supabase, movement.id, user.id,
+      source.account_id, newDate, source.amount, source.installments
+    )
+  }
+
+  if (source.type === 'saving' && source.goal_id) {
+    await adjustGoalAmount(supabase, user.id, source.goal_id, source.amount)
+  }
+
+  revalidatePaths()
+}
+
 export async function stopRecurring(id: string) {
   const { supabase, user } = await getUser()
   const { error } = await supabase

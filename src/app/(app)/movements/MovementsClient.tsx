@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { MovementSheet } from './MovementSheet'
 import { MonthSelector } from '@/components/MonthSelector'
-import { deleteMovement, stopRecurring } from './actions'
+import { deleteMovement, stopRecurring, applyRecurringSuggestion } from './actions'
 import { formatMXN } from '@/lib/currency'
 import { formatShortDate } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
@@ -91,7 +91,11 @@ export function MovementsClient({
 
   // Stopped suggestions (optimistic: removed from list immediately after stopping)
   const [stoppedIds, setStoppedIds] = useState<Set<string>>(new Set())
-  const visibleSuggestions = suggestions.filter((s) => !stoppedIds.has(s.id))
+  // Pending add (optimistic hide while server action runs; reverts if it fails)
+  const [pendingAddIds, setPendingAddIds] = useState<Set<string>>(new Set())
+  const visibleSuggestions = suggestions.filter(
+    (s) => !stoppedIds.has(s.id) && !pendingAddIds.has(s.id)
+  )
 
   const filtered = useMemo(() => {
     return movements.filter((m) => {
@@ -176,9 +180,19 @@ export function MovementsClient({
                   size="sm"
                   variant="outline"
                   className="h-7 px-2 text-xs flex-shrink-0"
-                  onClick={() => openCreate({ ...s, date: undefined as unknown as string, id: undefined as unknown as string })}
+                  disabled={pendingAddIds.has(s.id)}
+                  onClick={async () => {
+                    setPendingAddIds((prev) => new Set(prev).add(s.id))
+                    try {
+                      await applyRecurringSuggestion(s.id, selectedMonth)
+                      toast.success('Movimiento agregado')
+                    } catch (err) {
+                      setPendingAddIds((prev) => { const n = new Set(prev); n.delete(s.id); return n })
+                      toast.error(err instanceof Error ? err.message : 'Error al agregar')
+                    }
+                  }}
                 >
-                  Agregar
+                  {pendingAddIds.has(s.id) ? '…' : 'Agregar'}
                 </Button>
                 <button
                   className="text-xs text-muted-foreground hover:text-destructive flex-shrink-0 transition-colors"
